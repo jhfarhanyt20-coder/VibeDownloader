@@ -7,7 +7,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write   # needed to publish the GitHub Release users download from
 
 jobs:
   build:
@@ -56,3 +56,21 @@ jobs:
           name: VibeDownloader-Windows-x64-Installer
           path: VibeDownloader_Installer.exe
           if-no-files-found: error
+
+      # In-app updater reads /releases/latest and picks the asset whose name
+      # contains "Installer", so a tag push must publish a real GitHub Release.
+      - name: Create GitHub Release (tag pushes only)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if (gh release view $tag --repo '${{ github.repository }}' 2>$null) {
+            gh release upload $tag VibeDownloader_Installer.exe --repo '${{ github.repository }}' --clobber
+          } else {
+            gh release create $tag VibeDownloader_Installer.exe `
+              --repo '${{ github.repository }}' `
+              --title "VibeDownloader $tag" `
+              --generate-notes
+          }

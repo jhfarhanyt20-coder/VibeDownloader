@@ -5,7 +5,7 @@
 
 !define APP_NAME "VibeDownloader"
 !define APP_EXE "VibeDownloader.exe"
-!define APP_VERSION "2.2.0"
+!define APP_VERSION "2.4.0"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
 Name "${APP_NAME}"

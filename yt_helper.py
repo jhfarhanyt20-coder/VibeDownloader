@@ -157,6 +157,92 @@ def update_ytdlp(progress_cb=None):
         return False, str(exc)
 
 
+# --------------------------------------------------------------- app updates
+APP_REPO = "jhfarhanyt20-coder/VibeDownloader"
+APP_UPDATE_URL = f"https://api.github.com/repos/{APP_REPO}/releases/latest"
+
+
+def _parse_version(text):
+    """Return a tuple of ints from a version string like '2.3.0'."""
+    nums = re.findall(r"\d+", (text or ""))
+    return tuple(int(n) for n in nums[:4]) if nums else (0,)
+
+
+def current_version():
+    """Return the running app version tuple."""
+    try:
+        from main import APP_VERSION
+        return _parse_version(APP_VERSION)
+    except Exception:                        # noqa: BLE001
+        return (0,)
+
+
+def check_app_update():
+    """Return (latest_version_str, download_url, asset_size) or None on failure."""
+    try:
+        req = requests.get(
+            APP_UPDATE_URL,
+            headers={"Accept": "application/vnd.github+json",
+                     "User-Agent": "VibeDownloader-updater"},
+            timeout=20,
+        )
+        if req.status_code != 200:
+            return None
+        data = req.json()
+        tag = (data.get("tag_name") or "").lstrip("v")
+        if not tag:
+            return None
+        latest = _parse_version(tag)
+        if latest <= current_version():
+            return None
+        assets = data.get("assets") or []
+        for asset in assets:
+            name = asset.get("name", "")
+            if name.endswith(".exe") and "Installer" in name:
+                return (tag, asset.get("browser_download_url"), asset.get("size"))
+        for asset in assets:
+            name = asset.get("name", "")
+            if name.endswith(".exe"):
+                return (tag, asset.get("browser_download_url"), asset.get("size"))
+        return (tag, data.get("html_url"), None)
+    except Exception:                        # noqa: BLE001
+        return None
+
+
+def download_app_update(url, dest, progress_cb=None):
+    """Stream the update installer to dest. Returns True on success."""
+    try:
+        with requests.get(url, stream=True, timeout=(20, 300)) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get("Content-Length") or 0)
+            done = 0
+            with open(dest, "wb") as handle:
+                for chunk in resp.iter_content(1024 * 256):
+                    if not chunk:
+                        continue
+                    handle.write(chunk)
+                    done += len(chunk)
+                    if progress_cb and total:
+                        progress_cb(f"Downloading update... {done * 100 // total}%")
+        return os.path.isfile(dest) and os.path.getsize(dest) > 1024 * 1024
+    except Exception:                        # noqa: BLE001
+        return False
+
+
+def install_app_update(installer_path):
+    """Launch the new installer with /SILENT and exit the current process."""
+    if not os.path.isfile(installer_path):
+        return False
+    try:
+        subprocess.Popen(
+            [installer_path, "/SILENT", "/SP-", "/DIR=" + installed_dir()],
+            creationflags=CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        return True
+    except Exception:                        # noqa: BLE001
+        return False
+
+
 def update_ytdlp_secure(progress_cb=None):
     """Download the official yt-dlp Windows build, verify it, replace with rollback."""
     target = ensure_ytdlp() or os.path.join(installed_dir(), "yt-dlp.exe")
