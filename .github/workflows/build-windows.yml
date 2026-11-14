@@ -35,20 +35,18 @@ jobs:
       - name: Build app executable
         run: python -m PyInstaller --clean --noconfirm VibeDownloader.spec
 
-      - name: Download portable NSIS
+      - name: Install NSIS
         shell: pwsh
-        run: |
-          $zip = Join-Path $env:RUNNER_TEMP 'nsis-3.13.zip'
-          $nsisRoot = Join-Path $env:RUNNER_TEMP 'nsis-3.13'
-          Invoke-WebRequest -Uri 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13.zip' -OutFile $zip
-          Expand-Archive -LiteralPath $zip -DestinationPath $nsisRoot -Force
-          $compiler = Get-ChildItem -Path $nsisRoot -Filter 'makensis.exe' -Recurse | Select-Object -First 1
-          if (-not $compiler) { throw 'makensis.exe was not found in the NSIS archive.' }
-          "NSIS_EXE=$($compiler.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+        run: choco install nsis -y --no-progress
 
       - name: Build installer
         shell: pwsh
-        run: '& "$env:NSIS_EXE" /V2 installer.nsi'
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $compiler)) { throw 'makensis.exe was not installed by chocolatey.' }
+          & $compiler /V2 installer.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path 'VibeDownloader_Installer.exe')) { throw 'Installer was not produced.' }
 
       - name: Upload installer
         uses: actions/upload-artifact@v4
