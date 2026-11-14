@@ -1,5 +1,30 @@
 # CHANGELOG — VibeDownloader
 
+## 2.5.0 (2026-11-15)
+- Help > Check for Updates now checks the desktop app; Update yt-dlp remains a
+  separate action under Options.
+- Added an update window with release notes, download progress, cancellation,
+  retry, and a link to the public releases page.
+- Automatic stable-release checks run at startup and while the app is resident
+  in the tray, at most once every 12 hours. Offline/rate-limit errors are no
+  longer reported as "up to date".
+- Installer downloads are restricted to this repository's HTTPS GitHub release
+  assets and trusted GitHub CDN redirects. Exact size, Windows PE header, and
+  SHA-256 are verified before installation. A read lock prevents replacement
+  between final verification and elevation; partial downloads are not executed.
+- Fixed the NSIS update command (/S and an unquoted, final /D= path), Windows UAC
+  launch, graceful download pause, installer restart, and post-update confirmation.
+  Declining UAC leaves the running app unchanged.
+- Upgrades retain settings, history, and downloaded files. The installer no
+  longer force-kills download/yt-dlp processes. Uninstall retains user data and
+  deletes only installed app resources.
+- Centralized app/build/installer versions in app_info.py and added Windows EXE
+  version resources.
+- GitHub Actions tests commits, builds Windows x64 installers on version tags,
+  and publishes installer plus SHA256SUMS.txt through an atomic draft release.
+  Published releases are never overwritten.
+- Added offline updater, UI-controller, and release-metadata regression tests.
+
 ## 2.4.0 (2026-11-14)
 - IDM-style app updates: startup update check (at most once per 12 h) plus the
   existing "Check for App Update" button now actually downloads and runs the

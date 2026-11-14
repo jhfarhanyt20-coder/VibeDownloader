@@ -1,7 +1,11 @@
-VibeDownloader 2.2.0
+VibeDownloader 2.5.0
 
-For end users: run VibeDownloader_Installer.exe. Python, pip, FFmpeg, FFprobe and yt-dlp should not be installed separately when using an installer produced by build_windows.bat.
+For end users: download VibeDownloader_Installer.exe from https://github.com/jhfarhanyt20-coder/VibeDownloader/releases/latest and run it on Windows 10/11 x64. Python, pip, FFmpeg, FFprobe and yt-dlp do not need separate installation.
 
-For developers: on Windows x64, install Python 3.12 x64 and NSIS, then run build_windows.bat. The build script prepares and bundles the release assets into the generated installer.
+App updates: Help > Check for Updates, the tray menu, or Options > Application updates. Automatic checks run at startup and every 12 hours while resident. Approve Update now and the Windows permission prompt; the installer verifies its download, retains user data, and restarts the app. Paused downloads can be resumed afterward.
+
+For developers: run build_windows.bat on Windows x64. It bootstraps private Python/NSIS tools if necessary and builds dist\release\VibeDownloader.exe, VibeDownloader_Installer.exe, and SHA256SUMS.txt. Future releases: see UPDATES_AND_RELEASES_BN.md.
 
 Browser setup: start the app, click Install / Reload Extension, then enable Developer mode and Load unpacked in Chrome or Edge using the copied extension-folder path.
+
+Unsigned releases may show a Windows SmartScreen warning. SHA-256 is an integrity check, not publisher code signing.

@@ -7,33 +7,52 @@ on:
       - "v*"
 
 permissions:
-  contents: write   # needed to publish the GitHub Release users download from
+  contents: read
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: "3.13"
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13.17"
           architecture: x64
           cache: pip
+          cache-dependency-path: "requirements*.txt"
+
+      - name: Validate app and tag versions
+        env:
+          RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          if ($env:RELEASE_TAG) {
+            python release_tools.py validate --tag "$env:RELEASE_TAG"
+          } else {
+            python release_tools.py validate
+          }
 
       - name: Install build dependencies
         run: python -m pip install -r requirements-build.txt
 
       - name: Run checks
         run: |
-          python -m py_compile main.py downloader.py yt_helper.py prepare_build.py
+          python -m compileall -q main.py app_info.py app_updater.py update_dialog.py bundle_self_test.py release_tools.py downloader.py yt_helper.py prepare_build.py windows_startup.py classic_icons.py tests
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s tests -v
 
       - name: Prepare bundled assets
         run: python prepare_build.py
 
       - name: Build app executable
-        run: python -m PyInstaller --clean --noconfirm VibeDownloader.spec
+        run: python -m PyInstaller --clean --noconfirm --distpath dist/release --workpath build/release VibeDownloader.spec
 
       - name: Install NSIS
         shell: pwsh
@@ -44,31 +63,72 @@ jobs:
         run: |
           $compiler = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
           if (-not (Test-Path $compiler)) { throw 'makensis.exe was not installed by chocolatey.' }
-          & $compiler /V2 installer.nsi
+          $version = python release_tools.py version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $compiler /V2 "/DAPP_VERSION=$version" installer.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path 'VibeDownloader_Installer.exe')) { throw 'Installer was not produced.' }
 
-      - name: Upload installer
-        uses: actions/upload-artifact@v4
+      - name: Test fresh install and in-place update
+        shell: pwsh
+        run: ./tests/installer_smoke_test.ps1 -InstallerPath ./VibeDownloader_Installer.exe
+
+      - name: Generate verified release files
+        run: |
+          python release_tools.py manifest
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item VibeDownloader_Installer.exe dist/release/VibeDownloader_Installer.exe
+          Copy-Item SHA256SUMS.txt dist/release/SHA256SUMS.txt
+
+      - name: Upload installer and verification files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VibeDownloader-Windows-x64-Installer
-          path: VibeDownloader_Installer.exe
+          path: |
+            dist/release/VibeDownloader_Installer.exe
+            dist/release/SHA256SUMS.txt
+            dist/release/RELEASE_NOTES.md
+            dist/release/SMOKE_TEST_REPORT.json
           if-no-files-found: error
+          retention-days: 30
 
-      # In-app updater reads /releases/latest and picks the asset whose name
-      # contains "Installer", so a tag push must publish a real GitHub Release.
-      - name: Create GitHub Release (tag pushes only)
-        if: startsWith(github.ref, 'refs/tags/')
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested release files
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: VibeDownloader-Windows-x64-Installer
+          path: release
+
+      - name: Verify the downloaded installer
+        working-directory: release
+        run: sha256sum --check SHA256SUMS.txt
+
+      # Stage assets in a draft, then publish them together. Never replace a
+      # published installer under the same tag: existing update checks trust it.
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: pwsh
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
         run: |
-          $tag = '${{ github.ref_name }}'
-          if (gh release view $tag --repo '${{ github.repository }}' 2>$null) {
-            gh release upload $tag VibeDownloader_Installer.exe --repo '${{ github.repository }}' --clobber
-          } else {
-            gh release create $tag VibeDownloader_Installer.exe `
-              --repo '${{ github.repository }}' `
-              --title "VibeDownloader $tag" `
-              --generate-notes
-          }
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/existing-release.json" 2>/dev/null; then
+            if [ "$(jq -r '.isDraft' "$RUNNER_TEMP/existing-release.json")" != "true" ]; then
+              echo "::error::This release is already published. Bump APP_VERSION and create a new tag."
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" --notes-file release/RELEASE_NOTES.md
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "VibeDownloader $RELEASE_TAG" --notes-file release/RELEASE_NOTES.md
+          fi
+          gh release upload "$RELEASE_TAG" \
+            release/VibeDownloader_Installer.exe release/SHA256SUMS.txt --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest

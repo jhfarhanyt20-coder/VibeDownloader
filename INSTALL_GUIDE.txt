@@ -1,4 +1,4 @@
-VibeDownloader 2.2.0 — Browser Extension Setup
+VibeDownloader 2.5.0 — Browser Extension Setup
 ================================================
 
 The full Windows installer bundles the desktop app and its runtime dependencies. After installing:
@@ -11,5 +11,7 @@ The full Windows installer bundles the desktop app and its runtime dependencies.
 6. Open the extension popup and confirm it says "Connected".
 
 Why this one-time step exists: Chrome and Edge block a normal desktop installer from silently loading an unpacked local extension. This is enforced by browser security. After the extension has been loaded, keep VibeDownloader running while you want downloads intercepted.
+
+App updates are available under Help > Check for Updates and are checked automatically every 12 hours. Updates keep settings, history, and downloaded files. After a desktop update replaces extension files, use Reload on the browser extensions page if needed.
 
 Direct file downloads use parallel ranges when the server supports them. If not, VibeDownloader safely falls back to a single connection. More connections do not guarantee more speed on every website.

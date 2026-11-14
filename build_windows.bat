@@ -115,10 +115,12 @@ if errorlevel 1 goto :fail
 if errorlevel 1 goto :fail
 "%PY_EXE%" -m pip install -r requirements-build.txt
 if errorlevel 1 goto :fail
-"%PY_EXE%" -m py_compile main.py downloader.py yt_helper.py prepare_build.py
+"%PY_EXE%" -m py_compile main.py app_info.py app_updater.py update_dialog.py bundle_self_test.py release_tools.py downloader.py yt_helper.py prepare_build.py
 if errorlevel 1 goto :fail
 "%PY_EXE%" -m unittest discover -s tests -v
 if errorlevel 1 goto :fail
+for /f "delims=" %%V in ('""%PY_EXE%" release_tools.py version"') do set "APP_VERSION=%%V"
+if not defined APP_VERSION goto :fail
 
 echo.
 echo [2/4] Preparing bundled assets. This downloads yt-dlp and FFmpeg for the installer...
@@ -127,22 +129,25 @@ if errorlevel 1 goto :fail
 
 echo.
 echo [3/4] Building the self-contained app executable...
-"%PY_EXE%" -m PyInstaller --clean --noconfirm VibeDownloader.spec
+"%PY_EXE%" -m PyInstaller --clean --noconfirm --distpath dist\release --workpath build\release VibeDownloader.spec
 if errorlevel 1 goto :fail
-if not exist "dist\VibeDownloader.exe" (
-  echo ERROR: PyInstaller did not create dist\VibeDownloader.exe
+if not exist "dist\release\VibeDownloader.exe" (
+  echo ERROR: PyInstaller did not create dist\release\VibeDownloader.exe
   goto :fail
 )
 
 echo.
 echo [4/4] Compiling the NSIS installer...
-"%NSIS_EXE%" /V2 installer.nsi
+"%NSIS_EXE%" /V2 "/DAPP_VERSION=%APP_VERSION%" installer.nsi
 if errorlevel 1 goto :fail
 if not exist "VibeDownloader_Installer.exe" goto :fail
+"%PY_EXE%" release_tools.py manifest
+if errorlevel 1 goto :fail
 
 echo.
 echo SUCCESS! One installer created:
 echo   %CD%\VibeDownloader_Installer.exe
+echo Version: %APP_VERSION%  ^|  Checksum: %CD%\SHA256SUMS.txt
 echo It bundles the app, Python runtime, UI packages, FFmpeg, FFprobe, yt-dlp and extension files.
 echo End users do not need Python, pip, FFmpeg, or yt-dlp installed separately.
 echo Build-only tools are kept in %BUILD_HOME%.

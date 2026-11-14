@@ -15,12 +15,15 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from app_info import APP_VERSION
+from release_tools import write_windows_version_info
+
 ROOT = Path(__file__).resolve().parent
 TOOLS = ROOT / "tools"
 YTDLP = ROOT / "yt-dlp.exe"
 FFMPEG_ZIP_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-USER_AGENT = "VibeDownloader-release-builder/2.1"
+USER_AGENT = f"VibeDownloader-release-builder/{APP_VERSION}"
 
 
 def download(url: str, target: Path, label: str) -> None:
@@ -155,6 +158,7 @@ def main() -> int:
         return 2
 
     try:
+        write_windows_version_info()
         prepare_ytdlp(args.offline)
         prepare_ffmpeg(args.offline)
     except Exception as exc:

@@ -1,23 +1,35 @@
-# Build Report
+# Build verification — VibeDownloader 2.5.0
 
-## Result
-- Installer built successfully: `VibeDownloader_Installer.exe`
-- Full path: C:\Users\farhan\Downloads\VibeDownloader_IDM_Ready_Source_FIXED\VibeDownloader_IDM_Ready_Source\VibeDownloader_Installer.exe
-- Size: 121648625 bytes
-- Last modified: 10/30/2026 00:06:08
-- SHA-256: 037f36fda4fa70c007c1764c5b03ff5146b131a13172cb114ae790de8570ad37
-- Build pipeline: build_windows.bat (Python 3.13 private install, PyInstaller, NSIS 3.13)
-- Tests: 2 downloader tests passed.
+## Local verification
 
-## Signing
-- Authenticode status: NotSigned (unsigned beta).
+- Windows x64 build: Python 3.13.17, PyInstaller 6.22.3, NSIS.
+- **48 offline regression tests passed**, including direct-download ranges,
+  update metadata, trusted redirects, SHA-256, partial/corrupt downloads,
+  cancellation, Windows shell/UAC error handling, and graceful update shutdown.
+- Python syntax checks passed.
+- GitHub Actions workflows passed `actionlint` validation.
+- Source and frozen-app smoke checks passed: Tk/update window, icon, extension,
+  FFmpeg 9.0.2, FFprobe 9.0.2, and yt-dlp 2026.10.26.
+- NSIS installer compiled successfully with version 2.5.0.
+- The pre-existing running workspace app was not stopped or overwritten.
 
-## Verification performed
-- Clean silent install to C:\Program Files\VibeDownloader succeeded.
-- Application startup verified: process running after launch.
-- Hash verified with Get-FileHash: match.
+## Release verification gate
 
-## Tests not run
-- Update success/failure scenarios: NOT RUN (requires network and live yt-dlp replacement; implementation present but not executed).
-- Ordinary file download and video download after install: NOT RUN in this session.
-- Full unit test suite beyond 2 downloader tests: NOT RUN (only 2 tests exist).
+The tagged **Build Windows installer** workflow builds a fresh installer and
+must pass actual install, frozen-app/tool startup, in-place upgrade, data
+retention, and uninstall checks on a disposable Windows runner before it
+publishes a release.
+
+Release: https://github.com/jhfarhanyt20-coder/VibeDownloader/releases/tag/v2.5.0
+
+Installer checksums are per-build outputs. Use `SHA256SUMS.txt` attached to the
+same GitHub Release as the installer, not a historical source-tree checksum.
+
+## Signing and remaining manual checks
+
+- No Authenticode certificate was provided; builds are unsigned and may show a
+  Windows SmartScreen warning. SHA-256 is integrity verification, not signing.
+- Interactive UAC acceptance/decline was not exercised manually; Windows API
+  parameters, COM lifecycle, and error 1223 handling are covered by mocked tests.
+- Live YouTube/media downloads and website-specific authentication were not
+  tested as part of this installer/update task.

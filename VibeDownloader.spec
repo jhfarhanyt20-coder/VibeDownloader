@@ -11,6 +11,7 @@ required_files = [
     ROOT / "tools" / "licenses" / "FFmpeg-build-source.txt",
     ROOT / "THIRD_PARTY_NOTICES.md",
     ROOT / "extension" / "manifest.json",
+    ROOT / "build" / "version_info.txt",
 ]
 missing = [str(path.relative_to(ROOT)) for path in required_files if not path.is_file()]
 if missing:
@@ -32,6 +33,7 @@ hiddenimports = [
     "downloader", "yt_helper", "pystray", "pystray._win32",
     "PIL", "PIL.Image", "requests", "certifi",
     "windows_startup", "classic_icons",
+    "app_info", "app_updater", "update_dialog", "bundle_self_test",
 ]
 hiddenimports += collect_submodules("pystray")
 
@@ -70,4 +72,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=str(ROOT / "VibeDownloader.ico"),
+    version=str(ROOT / "build" / "version_info.txt"),
 )

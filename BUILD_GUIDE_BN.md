@@ -9,6 +9,7 @@
 3. `build_windows.bat`-এ double-click করুন। Script user-level folder `%LOCALAPPDATA%\VibeDownloaderBuildTools`-এ Python 3.13.17 ও NSIS 3.13 প্রয়োজন হলে download করে; system PATH বা তোমার Python 3.15 install পরিবর্তন করে না।
 4. Script build packages install, Python syntax/test check, `yt-dlp.exe` ও FFmpeg asset preparation, app build এবং NSIS installer compilation নিজেই করে।
 5. সফল হলে project folder-এ `VibeDownloader_Installer.exe` তৈরি হবে। অন্য ব্যবহারকারীদের শুধু এই installer-টিই দিন।
+6. `SHA256SUMS.txt`-তে ওই installer-এর hash থাকবে। App EXE তৈরি হবে `dist\release\VibeDownloader.exe`-তে, যাতে পুরোনো চলমান `dist\VibeDownloader.exe` overwrite না হয়।
 
 ## ব্যবহারকারীর কম্পিউটারে
 
@@ -21,8 +22,12 @@
 Developer machine-এ চালান:
 
 ```bat
-"%LOCALAPPDATA%\VibeDownloaderBuildTools\Python313\python.exe" -m py_compile main.py downloader.py yt_helper.py prepare_build.py
+"%LOCALAPPDATA%\VibeDownloaderBuildTools\Python313\python.exe" -m compileall -q main.py app_info.py app_updater.py update_dialog.py bundle_self_test.py release_tools.py downloader.py yt_helper.py prepare_build.py tests
 "%LOCALAPPDATA%\VibeDownloaderBuildTools\Python313\python.exe" -m unittest discover -s tests -v
 ```
 
 প্রকাশের আগে `THIRD_PARTY_NOTICES.md`-এর FFmpeg license/source শর্তও যাচাই করতে হবে, বিশেষত installer অন্যদের মধ্যে distribute করলে।
+
+## GitHub release ও app update
+
+সম্পূর্ণ নির্দেশনা: **[UPDATES_AND_RELEASES_BN.md](UPDATES_AND_RELEASES_BN.md)**। `app_info.py`-তে নতুন version দিন, changelog লিখুন, তারপর matching `vX.Y.Z` tag push করুন। GitHub Actions installer test করে release publish করবে। ব্যবহারকারীরা **Help → Check for Updates** অথবা automatic check-এর মাধ্যমে update পাবেন।

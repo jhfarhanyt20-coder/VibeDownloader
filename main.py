@@ -29,12 +29,13 @@ import requests
 from PIL import Image, ImageTk
 
 from classic_icons import toolbar_icon
+from app_info import APP_NAME, APP_VERSION
+import app_updater
 import downloader as engine
+from update_dialog import AppUpdateDialog
 import windows_startup
 import yt_helper
 
-APP_NAME = "VibeDownloader"
-APP_VERSION = "2.4.0"
 UI_REVISION = 3
 
 ctk.set_default_color_theme("blue")
@@ -869,6 +870,10 @@ class VibeDownloaderApp(ctk.CTk):
         self._queue_had_work = False
         self._queue_action_fired = False
         self._pending_update = None
+        self._update_dialog = None
+        self._update_check_running = False
+        self._update_install_running = False
+        self._update_shutdown = False
         self._schedule_holding = False
 
         self.load_settings()
@@ -900,10 +905,9 @@ class VibeDownloaderApp(ctk.CTk):
         if self.startup_launch and self.settings.get("start_minimized", True):
             self.after(0, self.withdraw)
 
-        # Silent startup update check (IDM-style): a newer release is offered
-        # once per launch, no more than once every 12 hours.
-        if self.settings.get("check_updates", True):
-            self.after(4000, self._auto_update_check)
+        # Check at startup and while resident in the tray, at most every 12 h.
+        # The timer also allows enabling checks without restarting the app.
+        self.after(4000, self._auto_update_check)
 
     # ------------------------------------------------------------- persistence
     def load_settings(self):
@@ -1776,6 +1780,9 @@ class VibeDownloaderApp(ctk.CTk):
     def _scheduler_loop(self):
         last_autosave = 0.0
         while self.running:
+            if self._update_shutdown:
+                time.sleep(0.1)
+                continue
             try:
                 scheduled = self._schedule_window_open()
                 if scheduled is False and not self._schedule_holding:
@@ -1795,6 +1802,8 @@ class VibeDownloaderApp(ctk.CTk):
 
                 gate = self._queue_gate_open()
                 with self.lock:
+                    if self._update_shutdown:
+                        continue
                     active = sum(1 for task in self.tasks.values()
                                  if task.status == "downloading")
                     free = max(1, self.max_concurrent) - active
@@ -1849,6 +1858,8 @@ class VibeDownloaderApp(ctk.CTk):
         pause_event = threading.Event()
         task.stop_event = stop_event
         task.pause_event = pause_event
+        if self._update_shutdown:
+            pause_event.set()
         task.note = ""
         self.save_history()
 
@@ -3096,7 +3107,7 @@ class VibeDownloaderApp(ctk.CTk):
                         ).pack(anchor="w", pady=4)
 
         updates_var = ctk.BooleanVar(value=bool(self.settings.get("check_updates", True)))
-        ctk.CTkCheckBox(body, text="Check for app updates at startup",
+        ctk.CTkCheckBox(body, text="Check for app updates automatically (every 12 hours)",
                         variable=updates_var,
                         font=ctk.CTkFont(family="Segoe UI", size=11),
                         text_color=C_TEXT
@@ -3188,11 +3199,14 @@ class VibeDownloaderApp(ctk.CTk):
                       text_color=C_TEXT,
                       command=lambda: self._open_path(DATA_DIR)
                       ).pack(side="left", padx=6)
-        ctk.CTkButton(tools_row, text="Check for App Update", width=150, height=30,
+        section("Application updates")
+        ctk.CTkLabel(body, text=f"VibeDownloader {APP_VERSION}  |  Stable Windows releases",
+                     anchor="w", text_color=C_MUTED,
+                     font=ctk.CTkFont(family="Segoe UI", size=11)).pack(fill="x", pady=2)
+        ctk.CTkButton(body, text="Check for App Updates", width=170, height=32,
                       fg_color=C_BLUE, hover_color=C_BLUE_HOVER,
-                      text_color=C_TEXT,
-                      command=self._check_app_update
-                      ).pack(side="left", padx=6)
+                      text_color="#161616" if _IS_DARK else "#FFFFFF", command=self.check_for_updates
+                      ).pack(anchor="w", pady=6)
 
         footer = ctk.CTkFrame(window, fg_color="transparent")
         footer.pack(fill="x", padx=20, pady=(0, 14))
@@ -3345,82 +3359,135 @@ class VibeDownloaderApp(ctk.CTk):
                                     "\n\nOpen edge://extensions manually."))
 
     def check_for_updates(self):
-        def worker():
-            ok, msg = yt_helper.update_ytdlp_secure(lambda t: self.post(lambda: self.show_status(t, "info")))
-            self.post(lambda: messagebox.showinfo("Updates", f"yt-dlp update: {'OK' if ok else 'Failed'}\n{msg}"))
-        threading.Thread(target=worker, daemon=True).start()
+        """The Help menu updates the app, not the separate yt-dlp tool."""
+        self._check_app_update()
+
+    def _ensure_update_dialog(self):
+        if self._update_dialog is not None and self._update_dialog.alive:
+            self._update_dialog.lift()
+            return self._update_dialog
+        palette = {
+            "bg": C_BG, "panel": C_PANEL, "border": C_BORDER, "text": C_TEXT,
+            "muted": C_MUTED, "accent": C_BLUE, "accent_hover": C_BLUE_HOVER,
+            "accent_text": "#161616" if _IS_DARK else "#FFFFFF",
+            "error": C_RED, "success": C_GREEN,
+        }
+
+        def closed(window):
+            if self._update_dialog is window:
+                self._update_dialog = None
+
+        self._update_dialog = AppUpdateDialog(
+            self, palette=palette, data_dir=DATA_DIR, on_check=self.check_for_updates,
+            on_install=self._install_app_update, on_close=closed)
+        return self._update_dialog
 
     def _check_app_update(self, silent=False):
-        """Ask GitHub for a newer release and offer it to the user."""
-        def worker():
-            result = yt_helper.check_app_update()
-            if not result:
-                if not silent:
-                    self.post(lambda: messagebox.showinfo(
-                        "App Update",
-                        f"You are running VibeDownloader {APP_VERSION}.\n"
-                        "No newer release was found on GitHub."))
-                return
-            tag, url, size = result
-            size_mb = (size or 0) / (1024 * 1024)
+        if not self.running or self._update_install_running:
+            return
+        dialog = self._update_dialog
+        if dialog is not None and dialog.alive and dialog.busy:
+            if not silent:
+                dialog.lift()
+            return
+        if not silent:
+            self._ensure_update_dialog().show_checking()
+        if self._update_check_running:
+            return
+        self._update_check_running = True
 
-            def ask():
-                answer = messagebox.askyesno(
-                    "App Update",
-                    f"VibeDownloader {tag} is available (you have {APP_VERSION}).\n"
-                    f"Download {size_mb:.1f} MB and install now?")
-                if answer:
-                    self._apply_app_update(tag, url)
-            self.post(ask)
+        def worker():
+            info, error = None, None
+            try:
+                info = app_updater.check_for_updates()
+            except app_updater.UpdateError as exc:
+                error = str(exc)
+            app_updater.record_check(os.path.join(DATA_DIR, "update_state.json"), error is None)
+            self.post(lambda: self._finish_update_check(info, error, silent))
+
         threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_update_check(self, info, error, silent):
+        self._update_check_running = False
+        if not self.running:
+            return
+        dialog = self._update_dialog
+        if not silent and (dialog is None or not dialog.alive):
+            return  # Closing a manual check must not reopen its window later.
+        if dialog is not None and dialog.alive and dialog.busy:
+            return  # A background check cannot interrupt an active download/install.
+        if error:
+            if dialog is not None and dialog.alive:
+                dialog.show_error(error)
+            elif not silent:
+                self._ensure_update_dialog().show_error(error)
+            return
+        if info is None:
+            if dialog is not None and dialog.alive:
+                dialog.show_current()
+            return
+        self._pending_update = info
+        if silent:
+            self._show_window()
+        self._ensure_update_dialog().show_available(info)
 
     def _auto_update_check(self):
-        """Startup check: at most once every 12 hours, then prompt if newer."""
-        try:
-            state_path = os.path.join(DATA_DIR, "update_state.json")
-            last = 0.0
-            try:
-                with open(state_path, "r", encoding="utf-8") as handle:
-                    last = float(json.load(handle).get("checked_at") or 0)
-            except (OSError, ValueError, TypeError, json.JSONDecodeError):
-                last = 0.0
-            now = time.time()
-            if now - last < 12 * 3600:
-                return
-            with open(state_path, "w", encoding="utf-8") as handle:
-                json.dump({"checked_at": now}, handle)
-        except OSError:
-            pass
-        self._check_app_update(silent=True)
-
-    def _apply_app_update(self, tag, url):
-        if not url:
+        if not self.running:
             return
-        dest = os.path.join(DATA_DIR, f"VibeDownloader-{tag}-Installer.exe")
+        self.after(3600 * 1000, self._auto_update_check)
+        if self.settings.get("check_updates", True) and app_updater.should_check_automatically(
+                os.path.join(DATA_DIR, "update_state.json")):
+            self._check_app_update(silent=True)
+
+    def _install_app_update(self, info, installer_path):
+        if self._update_install_running or not getattr(sys, "frozen", False):
+            return
+        self._update_install_running = True
+        self._ensure_update_dialog().show_installing()
+
         def worker():
-            ok = yt_helper.download_app_update(
-                url, dest,
-                lambda t: self.post(lambda: self.show_status(t, "info")))
-            if not ok:
-                self.post(lambda: messagebox.showerror(
-                    "App Update", "Download failed. Try again later."))
-                return
-            if yt_helper.install_app_update(dest):
-                self.post(lambda: self.show_status(
-                    "Update installer started - VibeDownloader will restart", "success"))
-                self.after(800, lambda: self._close_for_update())
+            try:
+                # Our one-file PyInstaller bootloader outlives the Python child
+                # while deleting its extracted files. Wait for BOTH to exit so
+                # the installer does not race a still-mapped old executable.
+                app_updater.launch_installer(
+                    installer_path, info, yt_helper.installed_dir(), os.getppid())
+            except app_updater.UpdateError as exc:
+                self.post(lambda message=str(exc): self._update_install_failed(message))
             else:
-                self.post(lambda: messagebox.showinfo(
-                    "App Update",
-                    f"Installer saved to:\n{dest}\n\nRun it to complete the update."))
+                self.post(self._close_for_update)
+
         threading.Thread(target=worker, daemon=True).start()
 
+    def _update_install_failed(self, message):
+        self._update_install_running = False
+        if self._update_dialog is not None and self._update_dialog.alive:
+            self._update_dialog.show_install_error(message)
+
     def _close_for_update(self):
-        # Exit fully (not hide-to-tray) so the installer can replace the exe.
-        try:
+        # Stop scheduling and wait for pause/resume state before leaving the tray.
+        self._update_shutdown = True
+        self._queue_action_fired = True
+        with self.lock:
+            for task in list(self.tasks.values()):
+                if task.status in ("downloading", "pausing"):
+                    if task.pause_event:
+                        task.pause_event.set()
+                    task.status = "pausing"
+                elif task.status == "queued":
+                    task.status = "paused"
+        self.show_status("Pausing downloads before installing the update...")
+        deadline = time.monotonic() + 60
+
+        def finish():
+            active = any(task.status in ("downloading", "pausing")
+                         for task in list(self.tasks.values()))
+            if active and time.monotonic() < deadline:
+                self.after(250, finish)
+                return
             self._real_close()
-        except Exception:                        # noqa: BLE001
-            pass
+
+        self.after(250, finish)
 
     def show_about(self):
         messagebox.showinfo(
@@ -3684,6 +3751,8 @@ class VibeDownloaderApp(ctk.CTk):
         if not self.running:
             return
         self.running = False
+        if self._update_dialog is not None:
+            self._update_dialog._cancel.set()
         for task in list(self.tasks.values()):
             if task.stop_event:
                 task.stop_event.set()
@@ -3753,6 +3822,7 @@ class VibeDownloaderApp(ctk.CTk):
             pystray.MenuItem("Stop Queue", lambda i: self.post(self.stop_queue)),
             pystray.MenuItem("Start All", lambda i: self.post(self.start_all)),
             pystray.MenuItem("Stop All", lambda i: self.post(self.pause_all)),
+            pystray.MenuItem("Check for Updates", lambda i: self.post(self.check_for_updates)),
             pystray.MenuItem("Exit", on_exit),
         )
         try:
@@ -3807,6 +3877,11 @@ def _notify_existing():
 
 
 def main():
+    # A release-runner check must not acquire the user's singleton, register
+    # startup, check online updates, or launch the normal download scheduler.
+    if len(sys.argv) == 3 and sys.argv[1] == "--self-test":
+        from bundle_self_test import run_self_test
+        raise SystemExit(run_self_test(sys.argv[2]))
     if not _acquire_single_instance():
         for _ in range(10):
             if _notify_existing():
@@ -3816,6 +3891,7 @@ def main():
     # --startup is the tray launch from Windows sign-in. A normal double-click,
     # including the installed exe, must show the window.
     startup = "--startup" in sys.argv
+    updated = "--updated" in sys.argv
     app = VibeDownloaderApp(startup_launch=startup)
 
     # When starting from Windows startup the window stays hidden in tray.
@@ -3824,6 +3900,9 @@ def main():
         app.lift()
         app.attributes("-topmost", True)
         app.after(200, lambda: app.attributes("-topmost", False))
+    if updated:
+        app.after(900, lambda: messagebox.showinfo(
+            "Update complete", f"{APP_NAME} was updated successfully to version {APP_VERSION}."))
     app.mainloop()
 
 

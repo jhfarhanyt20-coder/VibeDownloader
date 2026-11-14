@@ -8,5 +8,9 @@ tools/ffmpeg.exe
 tools/ffprobe.exe
 tools/*.zip
 VibeDownloader_Installer.exe
+SHA256SUMS.txt
 
 github.txt
+gihub.txt
+.vibe-scratch/
+*.download
