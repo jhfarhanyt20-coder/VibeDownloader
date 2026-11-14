@@ -1,0 +1,15 @@
+VibeDownloader 2.2.0 — Browser Extension Setup
+================================================
+
+The full Windows installer bundles the desktop app and its runtime dependencies. After installing:
+
+1. Start VibeDownloader from the Desktop or Start Menu shortcut.
+2. Click "Install / Reload Extension" in the app.
+3. In Chrome/Edge, open the extensions page if it was not opened automatically.
+4. Enable Developer mode and click "Load unpacked".
+5. Select the extension folder shown by VibeDownloader (the folder path is copied to the clipboard).
+6. Open the extension popup and confirm it says "Connected".
+
+Why this one-time step exists: Chrome and Edge block a normal desktop installer from silently loading an unpacked local extension. This is enforced by browser security. After the extension has been loaded, keep VibeDownloader running while you want downloads intercepted.
+
+Direct file downloads use parallel ranges when the server supports them. If not, VibeDownloader safely falls back to a single connection. More connections do not guarantee more speed on every website.

@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "VibeDownloader",
+  "version": "2.3.0",
+  "description": "IDM-style download manager - catches every download and sends it to VibeDownloader.",
+  "permissions": [
+    "downloads",
+    "contextMenus",
+    "storage",
+    "cookies",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
+}

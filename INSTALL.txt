@@ -1,0 +1,7 @@
+VibeDownloader 2.2.0
+
+For end users: run VibeDownloader_Installer.exe. Python, pip, FFmpeg, FFprobe and yt-dlp should not be installed separately when using an installer produced by build_windows.bat.
+
+For developers: on Windows x64, install Python 3.12 x64 and NSIS, then run build_windows.bat. The build script prepares and bundles the release assets into the generated installer.
+
+Browser setup: start the app, click Install / Reload Extension, then enable Developer mode and Load unpacked in Chrome or Edge using the copied extension-folder path.

@@ -1,0 +1,3 @@
+Bundled FFmpeg source package URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+Inspect the archived FFmpeg README/license files in this folder. The Essentials build may include GPL-enabled components.
+The publisher must separately ensure that the exact binary's applicable license/source obligations are met before redistribution.

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.before
+build/
+dist/
+.tools-cache/
+tools/ffmpeg.exe
+tools/ffprobe.exe
+tools/*.zip
+VibeDownloader_Installer.exe
+
+github.txt

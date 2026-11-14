@@ -1,0 +1,58 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          architecture: x64
+          cache: pip
+
+      - name: Install build dependencies
+        run: python -m pip install -r requirements-build.txt
+
+      - name: Run checks
+        run: |
+          python -m py_compile main.py downloader.py yt_helper.py prepare_build.py
+          python -m unittest discover -s tests -v
+
+      - name: Prepare bundled assets
+        run: python prepare_build.py
+
+      - name: Build app executable
+        run: python -m PyInstaller --clean --noconfirm VibeDownloader.spec
+
+      - name: Download portable NSIS
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'nsis-3.13.zip'
+          $nsisRoot = Join-Path $env:RUNNER_TEMP 'nsis-3.13'
+          Invoke-WebRequest -Uri 'https://downloads.sourceforge.net/project/nsis/NSIS%203/3.13/nsis-3.13.zip' -OutFile $zip
+          Expand-Archive -LiteralPath $zip -DestinationPath $nsisRoot -Force
+          $compiler = Get-ChildItem -Path $nsisRoot -Filter 'makensis.exe' -Recurse | Select-Object -First 1
+          if (-not $compiler) { throw 'makensis.exe was not found in the NSIS archive.' }
+          "NSIS_EXE=$($compiler.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Build installer
+        shell: pwsh
+        run: '& "$env:NSIS_EXE" /V2 installer.nsi'
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: VibeDownloader-Windows-x64-Installer
+          path: VibeDownloader_Installer.exe
+          if-no-files-found: error

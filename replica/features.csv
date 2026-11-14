@@ -1,0 +1,42 @@
+feature,area,priority,original,clone,notes
+Classic menu-toolbar-tree-table main layout,main window,must,yes,no,Use original VibeDownloader artwork and branding
+Large selection-aware action toolbar,main window,must,yes,no,Add resume stop stop-all delete clear options scheduler queue actions
+Dense sortable download table,main window,must,yes,no,Filename size status speed dates ETA destination
+Hierarchical category navigation,categories,must,yes,no,All plus file types unfinished finished and queues
+Automatic category assignment,categories,must,yes,no,Infer from extension or media kind
+Manual Add URL flow,downloads,must,yes,no,Clipboard-prefill and destination selection
+Download File Info confirmation dialog,downloads,must,yes,no,Start now or Download Later
+Parallel HTTP range downloads,engine,must,yes,no,Already present in baseline; verify during build
+Safe fallback when ranges are unsupported,engine,must,yes,no,Already present in baseline; verify during build
+Pause and resume direct downloads,engine,must,yes,no,Persist part and segment state
+Download history across restarts,engine,must,yes,no,Already present in baseline; verify during build
+Browser download takeover,browser integration,must,yes,no,Chrome and Edge in current scope
+Browser cookies and referrer hand-off,browser integration,must,yes,no,For authenticated or protected links
+Right-click Download with app,browser integration,must,yes,no,Independent VibeDownloader naming
+Close to tray without stopping downloads,windows lifecycle,must,yes,no,Always-available tray process
+Start with Windows,windows lifecycle,must,yes,no,Per-user Run registration and installer default
+Start hidden/minimized from Windows startup,windows lifecycle,must,yes,no,--startup launch mode
+Prevent duplicate background instances,windows lifecycle,should,yes,no,Second launch should reveal the running instance
+Restore main window from tray,windows lifecycle,should,yes,no,Tray left-click and Show action
+Per-download progress dialog,downloads,should,yes,no,Status limiter and completion action
+Start stop and retry from context menu,downloads,should,yes,no,Selection-aware
+Start all and stop all,downloads,should,yes,no,Toolbar menu and tray
+Category-specific save folders,categories,should,yes,no,Remember from file-info dialog
+Custom categories,categories,should,yes,no,Name path and extension rules
+Light and dark themes,appearance,should,yes,no,Classic light is default for this pass
+Configurable connections per file,engine,should,yes,no,Current cap is 16
+Configurable simultaneous downloads,engine,should,yes,no,Global scheduler cap
+Speed limiter,engine,should,yes,no,Already present in baseline; verify during build
+Media page download via yt-dlp,media,should,yes,no,Independent third-party component
+Audio extraction and video merge via FFmpeg,media,should,yes,no,Already present in baseline; verify packaging
+Named download queues,queues,could,yes,no,Default and custom queues
+Queue ordering and concurrent-file count,queues,could,yes,no,Drag or move actions
+Scheduled start and stop time,queues,could,yes,no,Later phase
+Completion actions for a queue,queues,could,yes,no,Open file run command sleep or shutdown with confirmation
+Clipboard URL monitoring,windows integration,could,yes,no,Opt-in to avoid surprise dialogs
+Drag and drop URL intake,downloads,could,yes,no,Drop on main window
+Download-all selected page links,browser integration,could,yes,no,Requires explicit user selection and confirmation
+IDM logos names screenshots and toolbar skins,branding,skip,yes,skip,Protected assets and marks are not part of the rebuild
+Proprietary IDM source algorithms and private site rules,engine,skip,yes,skip,Clean-room implementation only
+Legacy IE monitor and OS network driver,browser integration,skip,yes,skip,Unsafe and unnecessary for Chrome Edge scope
+Dial-up modem control,legacy integration,skip,yes,skip,Obsolete for target users
