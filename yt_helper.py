@@ -237,12 +237,39 @@ def find_js_runtime():
     return None
 
 
+def _ffmpeg_works(path):
+    try:
+        result = subprocess.run([path, "-version"], capture_output=True, timeout=15,
+                                creationflags=CREATE_NO_WINDOW, stdin=subprocess.DEVNULL)
+        return result.returncode == 0 and b"ffmpeg version" in result.stdout[:200]
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+_FFMPEG_CHECKED = {}
+
+
 def find_ffmpeg():
     # The release installer embeds FFmpeg so a new user does not need an
     # extra first-run download. Keep legacy/app-local locations as fallbacks.
     bundled = os.path.join(app_data_dir(), "ffmpeg", "bin", "ffmpeg.exe")
     if os.path.isfile(bundled):
-        return bundled
+        # A broken copy from an interrupted older install must not be trusted:
+        # drop it so the auto-install can fetch a good one.
+        try:
+            stamp = (os.path.getsize(bundled), os.path.getmtime(bundled))
+        except OSError:
+            stamp = None
+        ok = _FFMPEG_CHECKED.get(stamp)
+        if ok is None:
+            ok = _ffmpeg_works(bundled)
+            _FFMPEG_CHECKED[stamp] = ok
+        if ok:
+            return bundled
+        try:
+            os.remove(bundled)
+        except OSError:
+            pass
     for folder in (os.path.join(resource_dir(), "tools"),
                    os.path.join(installed_dir(), "tools"),
                    resource_dir(), installed_dir()):
@@ -266,6 +293,9 @@ def install_ffmpeg(progress_cb=None):
     target_dir = os.path.join(app_data_dir(), "ffmpeg", "bin")
     os.makedirs(target_dir, exist_ok=True)
     tmp_zip = os.path.join(app_data_dir(), "ffmpeg-download.zip")
+    # extract into a staging folder and only move complete, working files into
+    # place - a half-written ffmpeg.exe would otherwise be trusted forever
+    staging = os.path.join(app_data_dir(), "ffmpeg-staging")
 
     last_error = ""
     for url in FFMPEG_URLS:
@@ -289,17 +319,25 @@ def install_ffmpeg(progress_cb=None):
                             progress_cb(f"Downloading FFmpeg... "
                                         f"{done * 100 // total}% "
                                         f"({speed / 1048576:.1f} MB/s)")
+            shutil.rmtree(staging, ignore_errors=True)
+            os.makedirs(staging, exist_ok=True)
             with zipfile.ZipFile(tmp_zip) as archive:
                 wanted = ("bin/ffmpeg.exe", "bin/ffprobe.exe")
                 for member in archive.namelist():
                     if member.replace("\\", "/").endswith(wanted):
                         filename = os.path.basename(member)
                         with archive.open(member) as source, \
-                                open(os.path.join(target_dir, filename), "wb") as out:
+                                open(os.path.join(staging, filename), "wb") as out:
                             shutil.copyfileobj(source, out)
             for filename in ("ffmpeg.exe", "ffprobe.exe"):
-                if not os.path.isfile(os.path.join(target_dir, filename)):
+                if not os.path.isfile(os.path.join(staging, filename)):
                     raise RuntimeError("ffmpeg.exe was not inside the archive")
+            if not _ffmpeg_works(os.path.join(staging, "ffmpeg.exe")):
+                raise RuntimeError("the downloaded ffmpeg.exe does not run")
+            for filename in ("ffprobe.exe", "ffmpeg.exe"):     # ffmpeg.exe last
+                os.replace(os.path.join(staging, filename),
+                           os.path.join(target_dir, filename))
+            shutil.rmtree(staging, ignore_errors=True)
             try:
                 os.remove(tmp_zip)
             except OSError:
@@ -313,6 +351,19 @@ def install_ffmpeg(progress_cb=None):
 
 
 # ------------------------------------------------------------------- helpers
+def is_playlist_only_url(url):
+    """youtube.com/playlist?list=... (no single video in it)."""
+    try:
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(url)
+        host = (parsed.netloc or "").lower()
+        query = parse_qs(parsed.query)
+        return ("youtube.com" in host and parsed.path.rstrip("/") == "/playlist"
+                and "list" in query and "v" not in query)
+    except Exception:                            # noqa: BLE001
+        return False
+
+
 def is_media_url(url):
     try:
         from urllib.parse import urlparse
@@ -415,6 +466,7 @@ class YtDlpRunner:
         command = [
             exe,
             "--newline",
+            "--encoding", "utf-8",          # keep non-English titles intact on Windows
             "--no-playlist",
             "--no-simulate",
             "--progress",
@@ -463,6 +515,11 @@ class YtDlpRunner:
         return command
 
     def run(self, stop_event, pause_event):
+        if is_playlist_only_url(self.url):
+            # one task = one file; a playlist would download many files under one
+            # row with a progress bar that restarts for every video
+            return "error", ("This is a playlist link. Open one video from the "
+                             "playlist and download that video.")
         exe = ensure_ytdlp()
         if not exe:
             return "error", ("yt-dlp.exe was not found. Put yt-dlp.exe next to "
@@ -514,6 +571,11 @@ class YtDlpRunner:
         total = 0
         downloaded = 0
         speed = 0
+        # "bv*+ba" downloads video then audio, each counting from 0. Add the
+        # finished stream to the totals so the bar keeps moving forward.
+        finished_streams = 0
+        stream_done = 0
+        stream_total = 0
 
         while True:
             if stop_event.is_set() or pause_event.is_set():
@@ -536,8 +598,14 @@ class YtDlpRunner:
                     if line.startswith("VIBE|"):
                         parts = line.split("|")
                         if len(parts) >= 5:
-                            downloaded = _to_int(parts[1])
-                            total = _to_int(parts[2]) or _to_int(parts[3])
+                            now_done = _to_int(parts[1])
+                            now_total = _to_int(parts[2]) or _to_int(parts[3])
+                            if (stream_total and now_total and now_total != stream_total
+                                    and now_done < stream_done):
+                                finished_streams += stream_total   # next stream started
+                            stream_done, stream_total = now_done, now_total
+                            downloaded = finished_streams + now_done
+                            total = (finished_streams + now_total) if now_total else 0
                             speed = _to_int(parts[4])
                     elif line.startswith("VIBEFILE:"):
                         result_file = line[len("VIBEFILE:"):].strip()
@@ -646,7 +714,7 @@ def media_info(url, headers=None):
     exe = ensure_ytdlp()
     if not exe:
         raise RuntimeError("yt-dlp not found")
-    command = [exe, "-J", "--no-playlist", "--no-warnings"]
+    command = [exe, "-J", "--no-playlist", "--no-warnings", "--encoding", "utf-8"]
     for key, value in (headers or {}).items():
         if key.lower() == "cookie":
             command += ["--add-header", f"Cookie: {value}"]

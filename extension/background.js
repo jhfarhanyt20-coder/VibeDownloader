@@ -7,30 +7,62 @@ const DEFAULTS = { port: DEFAULT_PORT, catchAll: true };
 let aliveCache = { at: 0, ok: false };
 const bypass = new Map();          // url -> expiry (downloads we must not catch)
 
+// Only catch downloads the user started with a real click / key press.
+// Pages that start a download on their own are left to the browser.
+const GESTURE_WINDOW_MS = 8000;
+let lastGesture = 0;
+
+async function recentGesture() {
+  let at = lastGesture;
+  if (!at) {
+    try {
+      const saved = await chrome.storage.session.get({ lastGesture: 0 });
+      at = saved.lastGesture || 0;
+    } catch (e) { /* session storage unavailable */ }
+  }
+  return at && Date.now() - at <= GESTURE_WINDOW_MS;
+}
+
 async function getCfg() {
   return chrome.storage.local.get(DEFAULTS);
 }
 
-async function ping(force = false) {
-  const now = Date.now();
-  if (!force && now - aliveCache.at < 2500) return aliveCache.ok;
-
-  const { port } = await getCfg();
+async function pingPort(port, timeout) {
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
+    const timer = setTimeout(() => controller.abort(), timeout);
     const res = await fetch(`http://127.0.0.1:${port}/ping`, {
       cache: "no-store",
       signal: controller.signal
     });
     clearTimeout(timer);
     const data = await res.json();
-    aliveCache = { at: Date.now(), ok: data && data.status === "ok" };
-    return aliveCache.ok;
+    return !!(data && data.status === "ok" && data.app === "VibeDownloader");
   } catch (e) {
-    aliveCache = { at: Date.now(), ok: false };
     return false;
   }
+}
+
+// The app moves to 8766..8776 when 8765 is busy; find it and remember the port.
+const PORT_RANGE = Array.from({ length: 12 }, (_, i) => DEFAULT_PORT + i);
+
+async function ping(force = false) {
+  const now = Date.now();
+  if (!force && now - aliveCache.at < 2500) return aliveCache.ok;
+
+  const { port } = await getCfg();
+  let ok = await pingPort(port, 2500);
+  if (!ok) {
+    const others = PORT_RANGE.filter((p) => p !== port);
+    const answers = await Promise.all(others.map((p) => pingPort(p, 800)));
+    const found = others[answers.indexOf(true)];
+    if (found) {
+      await chrome.storage.local.set({ port: found });
+      ok = true;
+    }
+  }
+  aliveCache = { at: Date.now(), ok };
+  return ok;
 }
 
 async function postToApp(payload, timeout = 12000) {
@@ -81,6 +113,7 @@ async function sendDownload(rawUrl, options = {}) {
     quality: options.quality || "best",
     filename: options.filename || "",
     referrer: options.referrer || "",
+    verify: !!options.verify,
     cookie,
     userAgent: self.navigator.userAgent
   };
@@ -103,6 +136,14 @@ async function sendDownload(rawUrl, options = {}) {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
+      if (message.type === "GESTURE") {
+        lastGesture = Date.now();
+        try {
+          await chrome.storage.session.set({ lastGesture });
+        } catch (e) { /* ignore */ }
+        sendResponse({ ok: true });
+        return;
+      }
       if (message.type === "PING") {
         const ok = await ping(true);
         sendResponse({ ok, port: (await getCfg()).port });
@@ -136,43 +177,65 @@ const SKIP_SCHEME = /^(blob|data|filesystem|chrome-extension|moz-extension|about
 const LOCAL_APP = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i;
 
 chrome.downloads.onCreated.addListener(async (item) => {
+  const url = item.finalUrl || item.url;
+  if (!url || SKIP_SCHEME.test(url) || LOCAL_APP.test(url)) return;
+
+  const expiry = bypass.get(url);
+  if (expiry && expiry > Date.now()) {
+    bypass.delete(url);
+    return;
+  }
+
+  // Pause the browser's copy at once, before any other await: a small file could
+  // otherwise finish in the browser while we decide, and then download twice.
+  // Pausing (not cancelling) keeps the browser's own request, so it can simply
+  // be resumed if the app does not take the job.
+  let paused = false;
+  try {
+    await chrome.downloads.pause(item.id);
+    paused = true;
+  } catch (e) { /* not pausable / already finished */ }
+
+  const giveBack = async () => {
+    if (!paused) return;
+    try { await chrome.downloads.resume(item.id); } catch (e) { /* ignore */ }
+  };
+
   try {
     const cfg = await getCfg();
-    if (!cfg.catchAll) return;
-
-    const url = item.finalUrl || item.url;
-    if (!url || SKIP_SCHEME.test(url) || LOCAL_APP.test(url)) return;
-
-    const expiry = bypass.get(url);
-    if (expiry && expiry > Date.now()) {
-      bypass.delete(url);
+    // catchAll off, page started it by itself, or app not running -> browser keeps it.
+    if (!cfg.catchAll || !(await recentGesture()) || !(await ping())) {
+      await giveBack();
       return;
     }
 
-    // If the app is not running, let the browser do a normal download.
-    if (!(await ping())) return;
-
-    // Stop Chrome's copy first, then hand the job to the app.
-    try {
-      await chrome.downloads.cancel(item.id);
-    } catch (e) { /* already gone */ }
-    try {
-      await chrome.downloads.erase({ id: item.id });
-    } catch (e) { /* ignore */ }
+    // Finished in the browser before we could pause it -> don't download it again.
+    const [current] = await chrome.downloads.search({ id: item.id });
+    if (!current || current.state === "complete") return;
 
     const result = await sendDownload(url, {
-      filename: item.filename || "",
+      filename: (item.filename || "").split(/[\\/]/).pop(),
       referrer: item.referrer || "",
-      kind: "auto"
+      kind: "auto",
+      verify: true
     });
 
-    // If forwarding failed, put the download back in the browser.
-    if (!result || result.status !== "ok") {
-      const name = (item.filename || "").split(/[\\/]/).pop();
+    if (result && result.status === "ok") {
+      try { await chrome.downloads.cancel(item.id); } catch (e) { /* already gone */ }
+      try { await chrome.downloads.erase({ id: item.id }); } catch (e) { /* ignore */ }
+      return;
+    }
+
+    // The app could not use this link (expired token, login needed, POST form...):
+    // continue the browser's own download, which still has the right request.
+    if (paused) {
+      await giveBack();
+    } else {
       bypass.set(url, Date.now() + 15000);
-      chrome.downloads.download({ url, filename: name || undefined });
+      chrome.downloads.download({ url });
     }
   } catch (e) {
+    await giveBack();
     console.warn("VibeDownloader intercept failed", e);
   }
 });
@@ -203,23 +266,35 @@ function rebuildMenus() {
   });
 }
 
+// Context menus persist in MV3; creating them once per install/update avoids
+// "duplicate id" races from re-creating them on every service-worker start.
 chrome.runtime.onInstalled.addListener(rebuildMenus);
-chrome.runtime.onStartup.addListener(rebuildMenus);
-rebuildMenus();
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (info.menuItemId === "vibe-grab") {
     const pageUrl = info.pageUrl || (tab && tab.url) || "";
     if (!tab || !tab.id) return;
-    chrome.tabs.sendMessage(tab.id, { type: "COLLECT_LINKS" }, async (response) => {
+    // ask the top frame only (iframes/ads would answer first with 0 links)
+    chrome.tabs.sendMessage(tab.id, { type: "COLLECT_LINKS" }, { frameId: 0 }, async (response) => {
+      if (chrome.runtime.lastError) {
+        setBadge("!", "#C62828");       // page opened before the extension was loaded
+        return;
+      }
       const urls = (response && response.urls) || [];
-      const cookie = pageUrl ? await cookieHeader(pageUrl) : "";
+      // each link gets only its own site's cookies, never the page's cookies
+      const byOrigin = new Map();
+      const items = [];
+      for (const url of urls) {
+        let origin = "";
+        try { origin = new URL(url).origin; } catch (e) { continue; }
+        if (!byOrigin.has(origin)) byOrigin.set(origin, await cookieHeader(url));
+        items.push({ url, cookie: byOrigin.get(origin) });
+      }
       try {
         await postToApp({
           action: "grab",
-          urls,
+          items,
           referrer: pageUrl,
-          cookie,
           userAgent: self.navigator.userAgent
         });
         setBadge(String(urls.length || "!"), urls.length ? "#1E8E3E" : "#C62828");
@@ -232,6 +307,13 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 
   let url = info.linkUrl || info.srcUrl || "";
   let kind = "auto";
+
+  // blob:/data: video or audio (YouTube, Facebook, most players) can't be fetched
+  // directly -> download the page with yt-dlp instead
+  if (url && !/^https?:\/\//i.test(url) && info.mediaType && info.mediaType !== "image") {
+    url = info.pageUrl || (tab && tab.url) || "";
+    kind = "media";
+  }
 
   if (info.menuItemId === "vibe-page" || !url) {
     url = info.pageUrl || (tab && tab.url) || "";

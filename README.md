@@ -27,7 +27,7 @@ See **[বাংলা update ও release গাইড](UPDATES_AND_RELEASES_BN.
 - Larger I/O chunks reduce Python write overhead. Multiple connections can improve throughput when a server and network permit it, but cannot exceed the connection's bandwidth and may be ignored or limited by the remote server.
 - Concurrent downloads are separately configurable. More connections are not always faster; start with 8 per file and raise the value only if the server/network benefits.
 
-No download manager can promise IDM's exact speed on every host. Speed depends on server throttling, network quality, file size, and whether HTTP Range requests are enabled.
+No download manager can promise the same speed on every host. Speed depends on server throttling, network quality, file size, and whether HTTP Range requests are enabled.
 
 ## Build a self-contained installer (developers)
 

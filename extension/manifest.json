@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "VibeDownloader",
-  "version": "2.5.0",
-  "description": "IDM-style download manager - catches every download and sends it to VibeDownloader.",
+  "version": "2.6.0",
+  "description": "VibeDownloader - catches your downloads and sends them to the VibeDownloader app.",
   "permissions": [
     "downloads",
     "contextMenus",
@@ -20,13 +20,23 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_icon": "icon.png"
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon.png"
+    }
   },
   "icons": {
-    "16": "icon.png",
-    "48": "icon.png",
+    "16": "icon16.png",
+    "48": "icon48.png",
     "128": "icon.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["icon16.png"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
   "content_scripts": [
     {
       "matches": [

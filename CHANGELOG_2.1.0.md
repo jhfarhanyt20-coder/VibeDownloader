@@ -1,4 +1,4 @@
-# VibeDownloader 2.2.0 — IDM-style UI and Windows startup
+# VibeDownloader 2.2.0 — classic UI and Windows startup
 
 - `build_windows.bat` can provision its own build-only Python and portable NSIS locally, without winget/choco/scoop or admin installation.
 - Uses a separate Python build environment so existing Python 3.15 installations are left untouched.

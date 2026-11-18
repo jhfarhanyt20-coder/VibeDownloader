@@ -15,7 +15,7 @@
 
 - Python, pip, FFmpeg, FFprobe বা yt-dlp আলাদা করে install করতে হবে না—এই build script দিয়ে তৈরি installer-এ এগুলো package করা থাকবে।
 - Browser download ধরার জন্য Chrome/Edge-এ extension একবার manually load করতে হবে: app চালু করুন → **Install / Reload Extension** → Developer mode চালু করুন → **Load unpacked** → app যে extension path clipboard-এ copy করেছে সেটি নির্বাচন করুন। Chrome/Edge-এর সাধারণ security policy-র কারণে local unpacked extension-টি desktop installer নীরবে install করতে পারে না।
-- IDM-এর মতো multi-connection speed চেষ্টা করে। তবে server Range request বন্ধ রাখলে বা connection throttle করলে speed বাড়ানো সম্ভব নয়; সে ক্ষেত্রে app single connection-এ fallback করবে।
+- multi-connection দিয়ে বেশি speed পাওয়ার চেষ্টা করে। তবে server Range request বন্ধ রাখলে বা connection throttle করলে speed বাড়ানো সম্ভব নয়; সে ক্ষেত্রে app single connection-এ fallback করবে।
 
 ## যাচাই
 

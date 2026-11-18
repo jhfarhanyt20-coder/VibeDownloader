@@ -5,7 +5,7 @@ only read public GitHub Releases.
 """
 
 APP_NAME = "VibeDownloader"
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.6.0"
 APP_REPO = "jhfarhanyt20-coder/VibeDownloader"
 INSTALLER_ASSET_NAME = "VibeDownloader_Installer.exe"
 CHECKSUM_ASSET_NAME = "SHA256SUMS.txt"

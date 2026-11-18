@@ -68,7 +68,7 @@ Release notes: `dist\release\RELEASE_NOTES.md`। চলমান পুরো�
 - Updater শুধু এই repository-এর exact installer asset এবং trusted GitHub HTTPS/CDN redirects গ্রহণ করে।
 - Download-এর exact size, Windows PE header এবং SHA-256 check হয়; partial/corrupt file run হয় না।
 - App-এ GitHub credential bundle করা হয় না। Local `github.txt`, `gihub.txt` এবং `.vibe-scratch/` Git-এ ignored।
-- SHA-256 integrity check **code-signing certificate নয়**। Certificate ছাড়া installer/EXE unsigned থাকবে; Windows SmartScreen warning দিতে পারে। IDM-এর মতো publisher identity দেখাতে বৈধ Authenticode certificate দিয়ে release files sign করতে হবে—**checksum বানানোর আগে**।
+- SHA-256 integrity check **code-signing certificate নয়**। Certificate ছাড়া installer/EXE unsigned থাকবে; Windows SmartScreen warning দিতে পারে। বড় সফটওয়্যারের মতো publisher identity দেখাতে বৈধ Authenticode certificate দিয়ে release files sign করতে হবে—**checksum বানানোর আগে**।
 - Chrome/Edge-এর unpacked extension silent install/update করা যায় না। নতুন extension files upgrade-এ replace হয়, কিন্তু browser-এ **Reload** দরকার হতে পারে।
 - Uninstall app files এবং shortcuts সরায়; settings/history ও downloaded files রেখে দেয়।
 - Third-party binary redistribution-এর আগে `THIRD_PARTY_NOTICES.md` এবং exact FFmpeg/yt-dlp license/source obligations যাচাই করুন।

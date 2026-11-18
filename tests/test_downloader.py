@@ -69,6 +69,22 @@ class LyingRangeHandler(BaseHTTPRequestHandler):
             pass
 
 
+class LimitedConnectionHandler(RangeHandler):
+    """Serves ranges, but only 2 at a time; extra connections get 503."""
+    slots = threading.BoundedSemaphore(2)
+
+    def do_GET(self):
+        if not self.__class__.slots.acquire(blocking=False):
+            self.send_response(503)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        try:
+            super().do_GET()
+        finally:
+            self.__class__.slots.release()
+
+
 class DownloaderRangeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -83,9 +99,16 @@ class DownloaderRangeTests(unittest.TestCase):
         cls.lying_thread.start()
         cls.lying_url = f"http://127.0.0.1:{cls.lying_server.server_port}/sample.bin"
 
+        cls.limited_server = ThreadingHTTPServer(("127.0.0.1", 0), LimitedConnectionHandler)
+        cls.limited_thread = threading.Thread(target=cls.limited_server.serve_forever,
+                                              daemon=True)
+        cls.limited_thread.start()
+        cls.limited_url = f"http://127.0.0.1:{cls.limited_server.server_port}/sample.bin"
+
     @classmethod
     def tearDownClass(cls):
-        for server, thread in ((cls.server, cls.thread), (cls.lying_server, cls.lying_thread)):
+        for server, thread in ((cls.server, cls.thread), (cls.lying_server, cls.lying_thread),
+                               (cls.limited_server, cls.limited_thread)):
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
@@ -126,6 +149,33 @@ class DownloaderRangeTests(unittest.TestCase):
             self.assertEqual(left[1] + 1, right[0])
         covered = sum(end - start + 1 for start, end in ranges)
         self.assertEqual(covered, engine.total_size)
+
+    def test_server_connection_limit_does_not_fail_download(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "limited.bin")
+            engine = MultiConnectionDownloader(self.limited_url, path, connections=8)
+            status, error = engine.run(threading.Event(), threading.Event())
+            self.assertEqual(status, COMPLETED, error)
+            self._assert_file_matches(path)
+
+    def test_presized_part_is_not_resumed_as_single_stream(self):
+        # A paused multi-connection download leaves a full-size .part with holes
+        # plus a state file. If the next run can't use ranges, it must restart
+        # instead of treating the full-size .part as finished.
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "resume.bin")
+            with open(path + ".part", "wb") as handle:
+                handle.truncate(len(PAYLOAD))
+            with open(path + ".vibe.json", "w", encoding="utf-8") as handle:
+                handle.write('{"url": "x", "size": 0, "segments": []}')
+            engine = MultiConnectionDownloader(self.lying_url, path, connections=4)
+            engine.total_size = len(PAYLOAD)
+            engine.stop_event = threading.Event()
+            engine.pause_event = threading.Event()
+            status, error = engine._run_single()
+            self.assertEqual(status, COMPLETED, error)
+            self._assert_file_matches(path)
+            self.assertFalse(os.path.exists(path + ".vibe.json"))
 
     def test_server_that_lies_about_ranges_falls_back_safely(self):
         with tempfile.TemporaryDirectory() as folder:

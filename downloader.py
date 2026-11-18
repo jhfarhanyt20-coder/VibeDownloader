@@ -1,5 +1,5 @@
 """
-VibeDownloader - IDM-style multi-connection download engine.
+VibeDownloader - multi-connection download engine.
 
 Split the file into N byte ranges, download them in parallel and write
 each range straight into its own offset of a single .part file.
@@ -24,7 +24,7 @@ STEAL_MIN = 768 * 1024
 
 
 class RateLimiter:
-    """Shared bandwidth cap for one download (IDM-style speed limiter)."""
+    """Shared bandwidth cap for one download."""
 
     def __init__(self, limit_bps=0):
         self.limit = max(0, int(limit_bps or 0))
@@ -33,7 +33,12 @@ class RateLimiter:
         self._lock = threading.Lock()
 
     def set_limit(self, bps):
-        self.limit = max(0, int(bps or 0))
+        # restart the measuring window, otherwise turning the limiter on mid-way
+        # lets the download run unthrottled until "time x limit" catches up
+        with self._lock:
+            self.limit = max(0, int(bps or 0))
+            self._started = time.time()
+            self._budget = 0.0
 
     def reset_window(self):
         with self._lock:
@@ -94,6 +99,8 @@ class Segment:
         self.done = 0            # bytes already written by this segment
         self.complete = False
         self.error = None
+        self.retries = 0         # restarts after a refused connection
+        self.retry_at = 0.0
 
     @property
     def length(self):
@@ -112,7 +119,7 @@ class MultiConnectionDownloader:
         self.on_progress = on_progress    # callback(downloaded, total, speed_bps)
         self.on_segments = on_segments    # callback(list of segment dicts)
         self.limiter = rate_limiter       # optional RateLimiter for a bandwidth cap
-        # IDM dynamic segmentation: a finished connection steals the tail of a slow one.
+        # Dynamic segmentation: a finished connection steals the tail of a slow one.
         self.dynamic = bool(dynamic)
 
         self.total_size = 0
@@ -314,6 +321,10 @@ class MultiConnectionDownloader:
 
         saved = (state or {}).get("segments") or []
         self.segments = self._segments_from_state(saved, connections)
+        # Write the state file at once: it marks the .part as a pre-allocated
+        # multi-connection file even if the app is killed in the first seconds.
+        self._save_state()
+        self._last_save = time.time()
 
         self.downloaded = sum(seg.done for seg in self.segments)
         self._notify(force=True)
@@ -325,7 +336,8 @@ class MultiConnectionDownloader:
 
         last_time = time.time()
         last_bytes = self.downloaded
-        while any(thread.is_alive() for thread in threads):
+        while (any(thread.is_alive() for thread in threads)
+               or self._recover_refused(threads)):
             if self._interrupted():
                 break
             time.sleep(0.2)
@@ -340,6 +352,7 @@ class MultiConnectionDownloader:
             if now - self._last_save >= 2:
                 self._save_state()
                 self._last_save = now
+            self._recover_refused(threads)
             self._rebalance(threads)
 
         for thread in threads:
@@ -418,8 +431,53 @@ class MultiConnectionDownloader:
     def _spawn_segment(self, seg, threads):
         thread = threading.Thread(target=self._segment_worker, args=(seg,),
                                   daemon=True)
+        seg.thread = thread
         thread.start()
         threads.append(thread)
+
+    # Many servers allow only N connections per client and refuse the rest
+    # with 403 / 429 / 503. That must not fail the whole file: use fewer
+    # connections and give the refused ranges to whichever connection frees up.
+    REFUSED = ("HTTP 403", "HTTP 429", "HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504")
+    MAX_SEGMENT_RETRIES = 5
+
+    def _recover_refused(self, threads):
+        """Restart refused segments when a slot is free. True while any is waiting."""
+        if self._interrupted():
+            return False
+        alive = [seg for seg in self.segments
+                 if getattr(seg, "thread", None) is not None and seg.thread.is_alive()]
+        waiting = []
+        for seg in self.segments:
+            if seg.complete or not seg.error or seg in alive:
+                continue
+            if not any(code in str(seg.error) for code in self.REFUSED):
+                continue
+            if seg.retries >= self.MAX_SEGMENT_RETRIES:
+                continue
+            # only worth it if the server does serve this file to *some* connection
+            served = any(other.done > 0 for other in self.segments if other is not seg)
+            if not served and seg.done == 0:
+                continue
+            waiting.append(seg)
+        if not waiting:
+            return False
+        if alive:
+            # the server said "too many": stay at the number it accepts
+            self.connections = max(1, min(self.connections, len(alive)))
+        now = time.time()
+        free = self.connections - len(alive)
+        for seg in waiting:
+            if free <= 0:
+                break
+            if now < seg.retry_at:
+                continue
+            seg.retries += 1
+            seg.retry_at = now + min(2 * seg.retries, 8)
+            seg.error = None
+            self._spawn_segment(seg, threads)
+            free -= 1
+        return True
 
     def _rebalance(self, threads):
         """Give a free connection the unfinished tail of the slowest segment."""
@@ -562,6 +620,15 @@ class MultiConnectionDownloader:
             return ERROR, friendly_error(exc)
 
         offset = 0
+        if os.path.exists(self.state_path):
+            # The .part came from a multi-connection run: it is pre-allocated to the
+            # full size with holes, so its length says nothing about progress.
+            # Resuming from it as one stream would "complete" a corrupt file.
+            try:
+                os.remove(self.part_path)
+            except OSError:
+                pass
+            self._delete_state()
         if os.path.exists(self.part_path) and self.total_size:
             offset = min(os.path.getsize(self.part_path), self.total_size)
         elif os.path.exists(self.part_path):

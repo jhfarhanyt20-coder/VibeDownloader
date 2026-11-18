@@ -1,5 +1,33 @@
 # CHANGELOG — VibeDownloader
 
+## 2.6.0 (2026-11-18)
+- New download progress window: Download status / Speed Limiter / Options on
+  completion tabs, file size, transfer rate, time left, resume capability, a
+  map of every connection's progress and a per-connection table.
+- New "Download complete" dialog with Open, Open with..., Open folder and Close.
+- Downloads now start in the background while "Download File Info" is open;
+  the part already downloaded moves into the folder you choose.
+- No more popups you didn't ask for: the browser extension only catches
+  downloads you started with a click, and clipboard catching is off by default
+  (it can be turned back on in Settings).
+- Dark theme is the default. New app and extension icon; the video download
+  button now shows it.
+- A server that allows only a few connections no longer fails the download;
+  VibeDownloader continues with fewer connections.
+- Fixed: a paused multi-connection download could be marked complete while
+  incomplete; small files could download twice; links the app cannot fetch now
+  continue in the browser; the speed limit applies at once.
+- Extension: respects "Catch all browser downloads" for link clicks, sends each
+  grabbed link only its own site's cookies, finds the app on another port, and
+  right-click download works on streaming (blob) videos.
+- Videos with Bengali or other non-English titles keep a correct file path.
+- Video progress no longer jumps backwards; playlist links show a clear
+  message; a broken FFmpeg install is detected and reinstalled.
+- Scheduler handles overnight windows (e.g. 23:00 to 06:00) and times like 9:00.
+- Download File Info: the "…" button opens a real Save As dialog, the category
+  folder box works, and a stuck file-info lookup no longer blocks the download.
+- After updating, reload the extension once on the browser's extensions page.
+
 ## 2.5.0 (2026-11-15)
 - Help > Check for Updates now checks the desktop app; Update yt-dlp remains a
   separate action under Options.
@@ -26,7 +54,7 @@
 - Added offline updater, UI-controller, and release-metadata regression tests.
 
 ## 2.4.0 (2026-11-14)
-- IDM-style app updates: startup update check (at most once per 12 h) plus the
+- App updates: startup update check (at most once per 12 h) plus the
   existing "Check for App Update" button now actually downloads and runs the
   installer (it previously only showed a message).
 - Fixed the update dialog: the Yes/No answer was created on a worker thread
@@ -37,12 +65,12 @@
 - yt-dlp bundled at 2026.10.26 (latest), FFmpeg bundled at 9.0.2 (latest).
 
 ## 2.2.0 (2026-11-01)
-- Classic IDM-style main window: large toolbar, category tree, dense sortable table with Date Added/Time left/Save To columns
+- Classic main window: large toolbar, category tree, dense sortable table with Date Added/Time left/Save To columns
 - Native Windows menu bar (not a custom frame)
 - Tray icon menu now includes Add URL, Start All, Stop All, and Exit
 - Windows startup registration: app starts minimized to tray by default
 - Settings Options: added "Start with Windows", "Hide window at startup", "Close to tray instead of exiting"
-- Original programmatic toolbar icons (no IDM artwork used)
+- Original programmatic toolbar icons
 - Version bump to 2.2.0
 
 ## 2.1.0

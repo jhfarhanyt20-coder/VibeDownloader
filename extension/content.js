@@ -1,6 +1,6 @@
 // VibeDownloader content script
 // 1) catches clicks on downloadable links on ANY website
-// 2) adds a draggable IDM-style download button on top of every <video> on every website
+// 2) adds a draggable download button on top of every <video> on every website
 
 (function () {
   "use strict";
@@ -53,6 +53,15 @@
     });
   }
 
+  // "Catch all browser downloads" switch from the extension popup
+  let catchAll = true;
+  try {
+    chrome.storage.local.get({ catchAll: true }, (v) => { catchAll = !!(v && v.catchAll); });
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && changes.catchAll) catchAll = !!changes.catchAll.newValue;
+    });
+  } catch (e) { /* extension reloaded */ }
+
   let appAlive = false;
   function refreshAlive() {
     try {
@@ -75,22 +84,44 @@
     link.remove();
   }
 
-  async function handleDownload(url, options, label) {
+  async function handleDownload(url, options, label, canFallback = true) {
     const result = await sendDownload(url, options);
     if (result && result.status === "ok") {
       toast((label || "Download") + " added to VibeDownloader");
       appAlive = true;
     } else {
       const error = (result && result.error) || "Not connected";
-      toast("VibeDownloader: " + error + " - using the browser instead", true);
-      appAlive = false;
-      browserFallback(url, options && options.filename);
+      if (canFallback) {
+        toast("VibeDownloader: " + error + " - using the browser instead", true);
+        browserFallback(url, options && options.filename);
+      } else {
+        toast("VibeDownloader: " + error + " - open the VibeDownloader app and try again", true);
+      }
+      if (!result || /not running|not connected/i.test(error)) appAlive = false;
     }
     return result;
   }
 
+  // --------------------------------------------------- report real user gestures
+  // The background only catches browser downloads that follow one of these,
+  // so pages that start downloads by themselves never open the app's dialog.
+  let lastGestureSent = 0;
+  function reportGesture(event) {
+    if (!event.isTrusted) return;
+    if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+    const now = Date.now();
+    if (now - lastGestureSent < 500) return;
+    lastGestureSent = now;
+    try {
+      chrome.runtime.sendMessage({ type: "GESTURE" }, () => void chrome.runtime.lastError);
+    } catch (e) { /* extension reloaded */ }
+  }
+  document.addEventListener("pointerdown", reportGesture, true);
+  document.addEventListener("keydown", reportGesture, true);
+
   // --------------------------------------------------- catch download clicks
   document.addEventListener("click", (event) => {
+    if (!event.isTrusted) return;
     if (event.defaultPrevented) return;
     if (event.button !== 0) return;
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
@@ -105,14 +136,15 @@
       extension = (path.split(".").pop() || "").toLowerCase();
     } catch (e) { return; }
     if (!hasDownloadAttr && !DOWNLOAD_EXTENSIONS.has(extension)) return;
-    if (!appAlive) return;
+    if (!catchAll || !appAlive) return;
     event.preventDefault();
     event.stopPropagation();
     const filename = anchor.getAttribute("download") || basename(href);
-    handleDownload(href, { kind: "file", filename, referrer: location.href }, filename || "File");
+    handleDownload(href, { kind: "file", filename, referrer: location.href, verify: true },
+                   filename || "File");
   }, true);
 
-  // --------------------------------------------------- IDM-style always-visible video button
+  // --------------------------------------------------- always-visible video download button
   // Every real <video> on the page gets a button that is ALWAYS shown (no hover, no timer).
   // Videos are never wrapped/moved. The button lives in a shadow-DOM overlay and follows
   // scroll / resize / fullscreen. Drag it anywhere on the video; the position is remembered.
@@ -123,10 +155,12 @@
     host.style.cssText = "position:fixed;top:0;left:0;width:0;height:0;z-index:2147483647;pointer-events:none;";
     const root = host.attachShadow({ mode: "open" });
     root.innerHTML = `<style>
-      .btn{position:fixed;display:none;pointer-events:auto;background:rgba(11,98,196,.95);color:#fff;border:none;
-        padding:6px 12px;border-radius:14px;font:600 12px/1 "Segoe UI",Arial,sans-serif;cursor:grab;
+      .btn{position:fixed;display:none;pointer-events:auto;align-items:center;gap:6px;
+        background:linear-gradient(135deg,rgba(106,61,245,.96),rgba(0,184,240,.96));color:#fff;border:none;
+        padding:5px 12px 5px 6px;border-radius:14px;font:600 12px/1 "Segoe UI",Arial,sans-serif;cursor:grab;
         box-shadow:0 2px 10px rgba(0,0,0,.5);user-select:none;white-space:nowrap;touch-action:none}
-      .btn:hover{background:#0a56ac}
+      .btn img{width:16px;height:16px;border-radius:4px;pointer-events:none;display:block}
+      .btn:hover{filter:brightness(1.1)}
       .btn.drag{cursor:grabbing}
     </style>`;
 
@@ -166,15 +200,31 @@
 
     function download(video) {
       let url = video.currentSrc || video.src || "";
+      let direct = true;
       // blob:/MSE/HLS streams can't be fetched directly -> let the app resolve the page URL
-      if (!/^https?:\/\//i.test(url) || /\.(m3u8|mpd)(\?|$)/i.test(url)) url = location.href;
-      handleDownload(url, { kind: "media", quality: "best", referrer: location.href, filename: document.title || "" }, "Video");
+      if (!/^https?:\/\//i.test(url) || /\.(m3u8|mpd)(\?|$)/i.test(url)) {
+        url = location.href;
+        direct = false;            // never "fall back" to downloading the web page itself
+      }
+      handleDownload(url, { kind: "media", quality: "best", referrer: location.href,
+                            filename: document.title || "" }, "Video", direct);
     }
+
+    let iconUrl = "";
+    try { iconUrl = chrome.runtime.getURL("icon16.png"); } catch (e) { /* reloaded */ }
 
     function makeButton(video) {
       const btn = document.createElement("button");
       btn.className = "btn";
-      btn.textContent = "\u2B07 Download";
+      if (iconUrl) {
+        const img = document.createElement("img");
+        img.src = iconUrl;
+        img.alt = "";
+        img.draggable = false;
+        btn.appendChild(img);
+      }
+      btn.appendChild(document.createTextNode("Download"));
+      btn.title = "Download with VibeDownloader";
 
       let moved = false, sx = 0, sy = 0, sOff = null;
       btn.addEventListener("pointerdown", (e) => {
@@ -236,7 +286,7 @@
         seen.add(v);
         let btn = buttons.get(v);
         if (!btn) { btn = makeButton(v); buttons.set(v, btn); }
-        btn.style.display = "block";
+        btn.style.display = "flex";
         place(v, btn);
       });
       buttons.forEach((btn, v) => {

@@ -1,6 +1,6 @@
 """Original, programmatically drawn toolbar icons for VibeDownloader.
 
-These are deliberately not based on IDM artwork. They provide a familiar
+They are original drawings that give a familiar
 Windows-utility silhouette while keeping VibeDownloader's visual identity.
 """
 
