@@ -1,4 +1,4 @@
-"""Small native-style software update window for the existing desktop UI."""
+"""Small software update window in VibeDownloader's own window frame."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pathlib import Path
 import customtkinter as ctk
 
 import app_updater
+import window_frame
 from app_info import APP_NAME, APP_RELEASES_URL, APP_VERSION
 
 
@@ -36,6 +37,7 @@ class AppUpdateDialog(ctk.CTkToplevel):
         self.configure(fg_color=palette["bg"])
         self.protocol("WM_DELETE_WINDOW", self.close)
         self.bind("<Escape>", lambda _event: self.close())
+        window_frame.apply(self, minimize=False, maximize=False)
 
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=22, pady=(20, 12))

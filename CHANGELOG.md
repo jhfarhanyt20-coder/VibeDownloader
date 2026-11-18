@@ -1,5 +1,23 @@
 # CHANGELOG — VibeDownloader
 
+## 2.7.0 (2026-11-19)
+- Our own title bar on every window - main window, dialogs, progress, update
+  and message boxes - in the theme's colors, with rounded corners. Drag to
+  move, double-click to maximize, resize from the edge; the taskbar button
+  minimizes and restores the window like any app.
+- New near-black, glossy dark theme (the default).
+- The main window opens at a medium size in the middle of the screen; columns
+  line up and fit; the list is much lighter and smoother with many downloads.
+- Options opens about 4x faster; a window opened from another window (such as
+  the update window from Options) always appears in front of it.
+- Video downloads work on more sites: the extension remembers the video
+  streams a page's player loads (MP4, HLS, DASH), and when yt-dlp does not
+  support a site, VibeDownloader downloads that stream instead.
+- Fixed: the "Category" shown at the top of Download File Info now follows the
+  category you pick.
+- After updating, reload the extension once on the browser's extensions page
+  (it needs one new permission to see the page's video streams).
+
 ## 2.6.0 (2026-11-18)
 - New download progress window: Download status / Speed Limiter / Options on
   completion tabs, file size, transfer rate, time left, resume capability, a

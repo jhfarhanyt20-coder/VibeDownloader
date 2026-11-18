@@ -21,7 +21,7 @@ import tkinter as tk
 import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, ttk
 from urllib.parse import unquote, urlparse
 
 import customtkinter as ctk
@@ -35,10 +35,18 @@ import downloader as engine
 from update_dialog import AppUpdateDialog
 import windows_startup
 import yt_helper
+import window_frame
+# themed replacements: every message box uses our own window frame
+from window_frame import themed_messagebox as messagebox
+from window_frame import themed_simpledialog as simpledialog
 
 UI_REVISION = 3
 
 ctk.set_default_color_theme("blue")
+# We draw our own title bar (window_frame). CustomTkinter's Windows title-bar
+# coloring hides and re-shows every window, which is slow and races with ours.
+ctk.CTk._deactivate_windows_window_header_manipulation = True
+ctk.CTkToplevel._deactivate_windows_window_header_manipulation = True
 
 # --------------------------------------------------------------------- folders
 DATA_DIR = yt_helper.app_data_dir()
@@ -101,23 +109,26 @@ _THEME = _early_theme()
 _IS_DARK = _THEME != "light"
 
 if _IS_DARK:
-    C_BG = "#202327"
-    C_PANEL = "#17191C"
-    C_TOOLBAR = "#25292D"
-    C_BORDER = "#4A4F55"
-    C_TEXT = "#F2F2F2"
-    C_MUTED = "#A9AFB5"
-    C_BLUE = "#48A7E8"
-    C_BLUE_HOVER = "#66B8EE"
-    C_SELECT = "#174D72"
-    C_ROW_ALT = "#1D2023"
-    C_GREEN = "#51B77A"
-    C_RED = "#E46A61"
-    C_ORANGE = "#E4A11B"
-    C_BTN = "#30353A"
-    C_BTN_HOVER = "#3C4248"
-    C_INPUT_BG = "#17191C"
-    C_BADGE = "#243C4D"
+    # near-black, layered "glossy" dark: each surface a step lighter than the
+    # one below it, thin highlight lines, one calm blue accent
+    C_BG = "#0D0E10"
+    C_PANEL = "#121316"
+    C_TOOLBAR = "#18191D"
+    C_BORDER = "#2A2C32"
+    C_TEXT = "#ECEDEF"
+    C_MUTED = "#8E949E"
+    C_BLUE = "#4C8DFF"
+    C_BLUE_HOVER = "#6AA1FF"
+    C_SELECT = "#1C2740"
+    C_ROW_ALT = "#15161A"
+    C_GREEN = "#3FBF7F"
+    C_RED = "#F0625A"
+    C_ORANGE = "#F0A53C"
+    C_BTN = "#1E2025"
+    C_BTN_HOVER = "#2A2D34"
+    C_INPUT_BG = "#0A0B0D"
+    C_BADGE = "#1C2433"
+    C_SHEEN = "#2E3138"      # 1 px top highlight on bars = the "gloss"
 else:
     C_BG = "#F3F3F3"
     C_PANEL = "#FFFFFF"
@@ -136,19 +147,31 @@ else:
     C_BTN_HOVER = "#DDEEFF"
     C_INPUT_BG = "#FFFFFF"
     C_BADGE = "#E5F2FA"
+    C_SHEEN = "#FFFFFF"
 
 ctk.set_appearance_mode("dark" if _IS_DARK else "light")
 
+# Our own title bar / window frame on every window, in the theme's colors.
+window_frame.configure(
+    colors={
+        "bg": C_BG, "bar": C_TOOLBAR, "text": C_TEXT, "muted": C_MUTED,
+        "border": C_BORDER, "hover": C_BTN_HOVER, "button": C_BTN,
+        "input": C_INPUT_BG, "accent": "#6A3DF5", "accent2": "#00B8F0",
+        "close_hover": "#C42B1C", "sheen": C_SHEEN,
+    },
+    icon_path=os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))),
+                           "VibeDownloader.ico"),
+)
+
 COLUMNS = [
-    ("name", "File Name", 265, "w"),
-    ("queue", "Q", 34, "center"),
-    ("size", "Size", 88, "e"),
-    ("status", "Status", 128, "w"),
-    ("description", "Description", 135, "w"),
-    ("speed", "Transfer rate", 100, "e"),
-    ("date", "Date Added", 128, "w"),
-    ("eta", "Time left", 82, "e"),
-    ("save_to", "Save To", 270, "w"),
+    ("name", "File Name", 170, "w"),
+    ("queue", "Q", 22, "center"),
+    ("size", "Size", 66, "e"),
+    ("status", "Status", 74, "w"),
+    ("description", "Description", 80, "w"),
+    ("speed", "Transfer rate", 84, "e"),
+    ("date", "Date Added", 106, "w"),
+    ("eta", "Time left", 62, "e"),
 ]
 
 CATEGORIES = [
@@ -409,6 +432,8 @@ class DownloadTask:
         self.queue_order = self.created_at
         self.retry_count = 0
         self.retry_after = 0.0
+        # media links the browser player really loaded (fallback when yt-dlp fails)
+        self.streams = []
 
         # runtime only
         self.stop_event = None
@@ -442,6 +467,7 @@ class DownloadTask:
             "queue_wait": self.queue_wait,
             "queue_order": self.queue_order,
             "retry_count": self.retry_count,
+            "streams": self.streams,
         }
 
     @classmethod
@@ -471,6 +497,7 @@ class DownloadTask:
         task.queue_wait = bool(data.get("queue_wait"))
         task.queue_order = float(data.get("queue_order") or task.created_at)
         task.retry_count = int(data.get("retry_count") or 0)
+        task.streams = [s for s in (data.get("streams") or []) if isinstance(s, dict)]
         if task.status in ("downloading", "queued", "pausing"):
             task.status = "paused"
         return task
@@ -876,7 +903,7 @@ class _ProgressWindow:
         self.window.protocol("WM_DELETE_WINDOW", self._on_close)
         self.window.bind("<Escape>", lambda _e: self._on_close())
         self.app._center_window(self.window)
-        _dark_title_bar(self.window)
+        window_frame.apply(self.window, maximize=False)
         self.window.after(50, self._tick)
 
     # ------------------------------------------------------------------ actions
@@ -1052,7 +1079,6 @@ class _CompleteDialog:
         win.title(f"Download complete - {APP_NAME}")
         win.configure(bg=app._classic_bg)
         win.resizable(False, False)
-        win.attributes("-topmost", True)
 
         outer = ttk.Frame(win, style="Vibe.TFrame", padding=(14, 12))
         outer.pack(fill="both", expand=True)
@@ -1094,7 +1120,7 @@ class _CompleteDialog:
         win.protocol("WM_DELETE_WINDOW", self._close)
         win.bind("<Escape>", lambda _e: self._close())
         app._center_window(win)
-        _dark_title_bar(win)
+        window_frame.apply(win, minimize=False, maximize=False)
         win.after(60, lambda: (win.lift(), win.focus_force()))
 
     @staticmethod
@@ -1121,6 +1147,90 @@ class _CompleteDialog:
             pass
 
 
+# ----------------------------------------------------- lightweight list rows
+ROW_FONT = ("Segoe UI", -12)
+ROW_FONT_BOLD = ("Segoe UI", -12, "bold")
+
+
+class _Cell(tk.Label):
+    """tk.Label that also accepts the CustomTkinter option names used here."""
+
+    def __init__(self, master, **kw):
+        kw.setdefault("bg", master.cget("bg"))
+        kw.setdefault("font", ROW_FONT)
+        kw.setdefault("text", "")
+        kw.setdefault("width", 1)          # take the column's width, never widen it
+        super().__init__(master, bd=0, padx=0, pady=0, **kw)
+
+    def configure(self, cnf=None, **kw):
+        if "text_color" in kw:
+            kw["fg"] = kw.pop("text_color")
+        if "fg_color" in kw:
+            kw["bg"] = kw.pop("fg_color")
+        if isinstance(kw.get("font"), ctk.CTkFont):
+            kw["font"] = ROW_FONT_BOLD if kw["font"].cget("weight") == "bold" else ROW_FONT
+        # skip no-op updates: the list refreshes several times a second
+        kw = {key: value for key, value in kw.items() if str(self.cget(key)) != str(value)}
+        if kw or cnf:
+            return super().configure(cnf, **kw)
+        return None
+
+    config = configure
+
+
+class _RowFrame(tk.Frame):
+    """Row background; changing it recolors every cell in the row."""
+
+    def __init__(self, master, **kw):
+        super().__init__(master, bd=0, highlightthickness=0, **kw)
+
+    def configure(self, cnf=None, **kw):
+        if "fg_color" in kw:
+            kw["bg"] = kw.pop("fg_color")
+        if "bg" in kw and str(self.cget("bg")) == str(kw["bg"]):
+            kw.pop("bg")
+        elif "bg" in kw:
+            for child in self.winfo_children():
+                if isinstance(child, _Cell):
+                    tk.Label.configure(child, bg=kw["bg"])
+                elif isinstance(child, _RowProgress):
+                    tk.Frame.configure(child, bg=kw["bg"])
+        if kw or cnf:
+            return super().configure(cnf, **kw)
+        return None
+
+    config = configure
+
+
+class _RowProgress(tk.Frame):
+    """2 px progress line at the bottom of a row (CTkProgressBar-compatible API)."""
+
+    def __init__(self, master, color=C_BLUE):
+        super().__init__(master, bg=master.cget("bg"), height=2, bd=0, highlightthickness=0)
+        self._fill = tk.Frame(self, bg=color, height=2, bd=0, highlightthickness=0)
+        self._value = -1.0
+
+    def set(self, value):
+        value = max(0.0, min(1.0, float(value or 0)))
+        if abs(value - self._value) < 0.001:
+            return
+        self._value = value
+        if value <= 0:
+            self._fill.place_forget()
+        else:
+            self._fill.place(relx=0, rely=0, relheight=1.0, relwidth=value)
+
+    def configure(self, cnf=None, **kw):
+        color = kw.pop("progress_color", None)
+        if color and str(self._fill.cget("bg")) != str(color):
+            self._fill.configure(bg=color)
+        if kw or cnf:
+            return super().configure(cnf, **kw)
+        return None
+
+    config = configure
+
+
 class VibeDownloaderApp(ctk.CTk):
     def __init__(self, startup_launch=False):
         super().__init__()
@@ -1128,8 +1238,14 @@ class VibeDownloaderApp(ctk.CTk):
         if self.startup_launch:
             self.withdraw()
         self.title(f"{APP_NAME} {APP_VERSION}")
-        self.geometry("1180x650")
-        self.minsize(900, 520)
+        # a medium window by default (maximize for more); never larger than the screen
+        width = min(960, max(800, self.winfo_screenwidth() - 160))
+        height = min(580, max(460, self.winfo_screenheight() - 180))
+        # open in the middle of the screen (the title bar adds ~36 px, the taskbar ~40)
+        x = max(0, (self.winfo_screenwidth() - width) // 2)
+        y = max(0, (self.winfo_screenheight() - 40 - (height + 36)) // 2)
+        self.geometry(f"{width}x{height}+{x}+{y}")
+        self.minsize(760, 440)
         self.configure(fg_color=C_BG)
         migrate_old_files()
 
@@ -1191,7 +1307,8 @@ class VibeDownloaderApp(ctk.CTk):
         self.bind("<space>", lambda _event: self._space_toggle())
         self.after(300, self._tick)
         self.after(400, self._apply_window_icon)
-        self.after(150, self._enable_dark_title_bar)
+        # our own themed title bar instead of the Windows caption
+        window_frame.apply(self)
         self.after(800, self._seed_clipboard)
         self.after(500, self._enable_file_drop)
         # The tray endpoint exists for the whole app lifetime, not only after
@@ -1425,6 +1542,8 @@ class VibeDownloaderApp(ctk.CTk):
         toolbar = tk.Frame(self, bg=C_TOOLBAR, height=74)
         toolbar.pack(fill="x")
         toolbar.pack_propagate(False)
+        # thin highlight along the top edge: a subtle glossy layer look
+        tk.Frame(toolbar, bg=C_SHEEN, height=1).place(relx=0, rely=0, relwidth=1.0)
         toolbar.configure(highlightthickness=0)
 
         icon_for = {
@@ -1449,36 +1568,33 @@ class VibeDownloaderApp(ctk.CTk):
                 text_color="white" if label == "Add URL" else C_TEXT,
                 border_width=0,
                 corner_radius=4,
-                width=86,
-                height=66,
+                width=76,
+                height=64,
             )
-            btn.pack(side="left", padx=2, pady=3)
+            btn.pack(side="left", padx=1, pady=4)
             self.toolbar_buttons[label] = btn
-
-        ctk.CTkButton(toolbar, text="🔌 Extension", width=130, height=32,
-                      corner_radius=3, font=ctk.CTkFont(family="Segoe UI", size=11),
-                      fg_color=C_BTN, hover_color=C_BTN_HOVER,
-                      text_color="#58A6FF", command=self.install_extension
-                      ).pack(side="left", padx=(6, 4))
+        # (the browser extension is installed from Downloads/Help menus and Options)
 
         self.connection_label = ctk.CTkLabel(
-            toolbar, text="", font=ctk.CTkFont(family="Segoe UI", size=11),
+            toolbar, text="", font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=C_MUTED)
-        self.connection_label.pack(side="right", padx=8)
-        self.search_var = ctk.StringVar()
+        self.connection_label.pack(side="right", padx=(4, 10))
+        # no textvariable: CustomTkinter hides the placeholder when one is set
         self.search_entry = ctk.CTkEntry(
-            toolbar, textvariable=self.search_var, width=170, height=28,
-            placeholder_text="Search downloads",
-            fg_color=C_INPUT_BG, border_color=C_BORDER, text_color=C_TEXT)
-        self.search_entry.pack(side="right", padx=(4, 8))
-        self.search_var.trace_add("write", lambda *_: self._on_search())
+            toolbar, width=190, height=30, corner_radius=4,
+            placeholder_text="\U0001F50D  Search downloads",
+            placeholder_text_color=C_MUTED,
+            fg_color=C_INPUT_BG, border_color=C_BORDER, text_color=C_TEXT,
+            font=ctk.CTkFont(family="Segoe UI", size=11))
+        self.search_entry.pack(side="right", padx=(4, 6))
+        self.search_entry.bind("<KeyRelease>", lambda _e: self._on_search())
 
         # ---- body (classic tree + table layout) ----
         body = ctk.CTkFrame(self, fg_color=C_BG, corner_radius=0)
         body.pack(fill="both", expand=True, padx=8, pady=6)
 
         # left categories
-        sidebar = ctk.CTkFrame(body, width=186, fg_color=C_PANEL,
+        sidebar = ctk.CTkFrame(body, width=168, fg_color=C_PANEL,
                                border_width=1, border_color=C_BORDER)
         sidebar.pack(side="left", fill="y", padx=(0, 8))
         sidebar.pack_propagate(False)
@@ -1491,6 +1607,9 @@ class VibeDownloaderApp(ctk.CTk):
         cat_frame.pack(fill="both", expand=True, padx=4, pady=(0, 8))
 
         self.category_buttons = {}
+        # created once and reused (a new CTkFont per refresh leaked Tk fonts)
+        self._cat_fonts = {False: ctk.CTkFont(family="Segoe UI", size=11),
+                           True: ctk.CTkFont(family="Segoe UI", size=11, weight="bold")}
         for key, label in CATEGORIES:
             btn = ctk.CTkButton(
                 cat_frame,
@@ -1537,20 +1656,22 @@ class VibeDownloaderApp(ctk.CTk):
         # header row for the rich table
         self.header_frame = ctk.CTkFrame(panel, fg_color=C_TOOLBAR, height=24,
                                          corner_radius=0)
-        self.header_frame.pack(fill="x")
+        # right padding = the list's scrollbar, so header and rows line up
+        self.header_frame.pack(fill="x", padx=(0, 18))
         self.header_frame.pack_propagate(False)
         self._configure_columns(self.header_frame)
         self._header_labels = {}
+        header_font = ctk.CTkFont(family="Segoe UI", size=10, weight="bold")
         for index, (col, text, _minsize, align) in enumerate(COLUMNS):
             anchor_map = {"w": "w", "e": "e", "center": "center"}
             header = ctk.CTkButton(
                 self.header_frame, text=text, anchor=anchor_map.get(align, "w"),
-                font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                font=header_font, width=1,      # width=1: follow the column, like the rows
                 text_color=C_TEXT, fg_color="transparent", hover_color=C_BTN,
                 height=22, corner_radius=0,
                 command=lambda c=col: self._sort_by(c))
             header.grid(row=0, column=index, sticky="ew",
-                        padx=(6 if index == 0 else 2, 2), pady=1)
+                        padx=((10, 4) if index == 0 else (4, 4)), pady=1)
             self._header_labels[col] = header
 
         self.list_container = ctk.CTkScrollableFrame(panel, fg_color=C_PANEL,
@@ -1629,8 +1750,10 @@ class VibeDownloaderApp(ctk.CTk):
             pass
 
     def _configure_columns(self, frame):
-        for index, (_col, _text, minsize, _align) in enumerate(COLUMNS):
-            frame.grid_columnconfigure(index, weight=1, minsize=minsize)
+        # only File Name stretches; fixed columns keep header and rows aligned
+        for index, (col, _text, minsize, _align) in enumerate(COLUMNS):
+            frame.grid_columnconfigure(index, weight=1 if col == "name" else 0,
+                                       minsize=minsize)
 
     def _category_selected(self, _event=None):
         pass  # CTkButton clicks handle selection directly
@@ -1651,8 +1774,7 @@ class VibeDownloaderApp(ctk.CTk):
                     btn.configure(
                         fg_color=C_SELECT if active else "transparent",
                         text_color=C_BLUE if active else C_TEXT,
-                        font=ctk.CTkFont(family="Segoe UI", size=11,
-                                         weight="bold" if active else "normal"))
+                        font=self._cat_fonts[bool(active)])
                 except Exception:                    # noqa: BLE001
                     pass
         self.render()
@@ -1845,6 +1967,8 @@ class VibeDownloaderApp(ctk.CTk):
 
         task = self._build_task(url, filename, kind, quality, headers)
         task.given_name = filename
+        if kind == "media":
+            task.streams = self._clean_streams(data.get("streams"))
         if self.settings.get("ask_save_path", True):
             # the small dialog opens at once; the real title / format is filled in
             # from a background thread (see _open_download_dialog)
@@ -1858,6 +1982,24 @@ class VibeDownloaderApp(ctk.CTk):
                 self.post(lambda: self._apply_resolved(task, res))
             threading.Thread(target=work, daemon=True).start()
         return task.id
+
+    @staticmethod
+    def _clean_streams(raw):
+        """Keep only well-formed http(s) stream entries sent by the extension."""
+        out = []
+        for item in raw or []:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("url") or "").strip()
+            kind = str(item.get("kind") or "")
+            if not re.match(r"^https?://", url, re.I) or kind not in ("hls", "dash", "video", "audio"):
+                continue
+            out.append({"url": url, "kind": kind,
+                        "size": int(item.get("size") or 0),
+                        "cookie": str(item.get("cookie") or "")})
+            if len(out) >= 8:
+                break
+        return out
 
     @staticmethod
     def _verify_link(url, headers, filename=""):
@@ -2285,6 +2427,10 @@ class VibeDownloaderApp(ctk.CTk):
                     dynamic=True)
             task.runner = runner
             status, error = runner.run(stop_event, pause_event)
+            if (task.kind == "media" and status == engine.ERROR and task.streams
+                    and not stop_event.is_set() and not pause_event.is_set()):
+                status, error = self._run_sniffed_streams(
+                    task, error, stop_event, pause_event, on_progress, on_file, on_segments)
         except Exception as exc:                 # noqa: BLE001
             status, error = engine.ERROR, str(exc)
 
@@ -2344,6 +2490,54 @@ class VibeDownloaderApp(ctk.CTk):
 
         self.save_history()
         self.post(self.update_stats)
+
+    def _run_sniffed_streams(self, task, first_error, stop_event, pause_event,
+                             on_progress, on_file, on_segments):
+        """yt-dlp could not handle the page: try the media links the player loaded.
+
+        HLS/DASH go through yt-dlp as plain stream URLs (works on any site);
+        direct video/audio files use the multi-connection engine.
+        """
+        status, error = engine.ERROR, first_error
+        folder = task.save_dir or self.default_save_dir
+        stem = sanitize_filename(os.path.splitext(task.name)[0]) or "video"
+        for stream in task.streams:
+            if stop_event.is_set() or pause_event.is_set():
+                break
+            headers = {k: v for k, v in task.headers.items() if k.lower() != "cookie"}
+            if stream.get("cookie"):
+                headers["Cookie"] = stream["cookie"]
+            task.note = "Downloading the stream the page's player uses..."
+            task.progress = 0.0
+            task.downloaded = 0
+            if stream["kind"] in ("hls", "dash"):
+                runner = yt_helper.YtDlpRunner(
+                    stream["url"], folder, quality=task.quality, headers=headers,
+                    on_progress=on_progress, on_file=on_file,
+                    speed_limit=task.speed_limit, output_name=stem)
+            else:
+                ext = os.path.splitext(urlparse(stream["url"]).path)[1].lower()
+                if ext.lstrip(".") not in MEDIA_EXTS:
+                    ext = ".mp3" if stream["kind"] == "audio" else ".mp4"
+                path = os.path.join(folder, stem + ext)
+                if os.path.isfile(path):
+                    path = unique_path(path)       # never overwrite a finished file
+                task.save_path = path
+                task.limiter = engine.RateLimiter(task.speed_limit)
+                runner = engine.MultiConnectionDownloader(
+                    stream["url"], path, connections=self.connections,
+                    headers=headers, on_progress=on_progress,
+                    on_segments=on_segments, rate_limiter=task.limiter, dynamic=True)
+            task.runner = runner
+            status, error = runner.run(stop_event, pause_event)
+            if status == engine.COMPLETED:
+                if stream["kind"] not in ("hls", "dash"):
+                    on_file(task.save_path)
+                break
+        task.note = ""
+        if status == engine.ERROR:
+            error = f"{first_error} (the page's own video links failed too: {error})"
+        return status, error
 
     # -------------------------------------------------------------- rendering
     def _tick(self):
@@ -2457,73 +2651,44 @@ class VibeDownloaderApp(ctk.CTk):
 
     def _create_row(self, task):
         base_color = C_PANEL if len(self.rows) % 2 == 0 else C_ROW_ALT
+        # Plain Tk widgets: a row is redrawn several times a second while
+        # downloading, and CustomTkinter widgets (each one a canvas) made long
+        # lists slow. Same look, a fraction of the cost.
         selected = task.id == self.selected_id
-        frame = ctk.CTkFrame(self.list_container,
-                             fg_color=C_SELECT if selected else base_color,
-                             corner_radius=0, height=38)
+        frame = _RowFrame(self.list_container,
+                          bg=C_SELECT if selected else base_color, height=30)
         frame.pack(fill="x")
         frame.pack_propagate(False)
+        frame.grid_propagate(False)
         self._configure_columns(frame)
+        frame.grid_rowconfigure(0, weight=1)
 
-        name = ctk.CTkLabel(frame, text="", anchor="w",
-                            font=ctk.CTkFont(family="Segoe UI", size=11),
-                            text_color=C_TEXT)
-        name.grid(row=0, column=0, sticky="ew", padx=(10, 4))
+        def cell(column, anchor, color=C_MUTED, pad=(4, 4)):
+            label = _Cell(frame, anchor=anchor, fg=color)
+            label.grid(row=0, column=column, sticky="ew", padx=pad)
+            return label
 
-        queue = ctk.CTkLabel(frame, text="", anchor="center",
-                             font=ctk.CTkFont(family="Segoe UI", size=11),
-                             text_color=C_MUTED)
-        queue.grid(row=0, column=1, sticky="ew", padx=4)
-
-        size = ctk.CTkLabel(frame, text="-", anchor="e",
-                            font=ctk.CTkFont(family="Segoe UI", size=11),
-                            text_color=C_MUTED)
-        size.grid(row=0, column=2, sticky="ew", padx=4)
-
-        status = ctk.CTkLabel(frame, text="", anchor="w",
-                              font=ctk.CTkFont(family="Segoe UI", size=11),
-                              text_color=C_MUTED)
-        status.grid(row=0, column=3, sticky="ew", padx=4)
-
-        desc = ctk.CTkLabel(frame, text="", anchor="w",
-                            font=ctk.CTkFont(family="Segoe UI", size=11),
-                            text_color=C_MUTED)
-        desc.grid(row=0, column=4, sticky="ew", padx=4)
-
-        speed = ctk.CTkLabel(frame, text="-", anchor="e",
-                             font=ctk.CTkFont(family="Segoe UI", size=11),
-                             text_color=C_MUTED)
-        speed.grid(row=0, column=5, sticky="ew", padx=4)
-
-        date = ctk.CTkLabel(frame, text="-", anchor="w",
-                            font=ctk.CTkFont(family="Segoe UI", size=11),
-                            text_color=C_MUTED)
-        date.grid(row=0, column=6, sticky="ew", padx=4)
-
-        eta = ctk.CTkLabel(frame, text="-", anchor="e",
-                           font=ctk.CTkFont(family="Segoe UI", size=11),
-                           text_color=C_MUTED)
-        eta.grid(row=0, column=7, sticky="ew", padx=4)
-
-        save_to = ctk.CTkLabel(frame, text="", anchor="w",
-                               font=ctk.CTkFont(family="Segoe UI", size=11),
-                               text_color=C_MUTED)
-        save_to.grid(row=0, column=8, sticky="ew", padx=(4, 10))
-
-        progress = ctk.CTkProgressBar(frame, height=8, corner_radius=4,
-                                      progress_color=C_BLUE)
-        progress.grid(row=0, column=9, sticky="ew", padx=(4, 10))
-        progress.set(0)
+        name = cell(0, "w", C_TEXT, (10, 4))
+        queue = cell(1, "center")
+        size = cell(2, "e")
+        status = cell(3, "w")
+        desc = cell(4, "w")
+        speed = cell(5, "e")
+        date = cell(6, "w")
+        eta = cell(7, "e")
+        # thin progress line along the bottom edge of the row
+        progress = _RowProgress(frame, color=C_BLUE)
+        progress.place(relx=0, rely=1.0, relwidth=1.0, height=2, anchor="sw")
 
         row = {
             "frame": frame,
             "name": name, "queue": queue, "size": size, "status": status,
             "description": desc, "speed": speed, "date": date,
-            "eta": eta, "save_to": save_to, "progress": progress,
+            "eta": eta, "progress": progress,
             "base_color": base_color, "state": None,
         }
 
-        for widget in (frame, name, queue, size, status, desc, speed, date, eta, save_to, progress):
+        for widget in (frame, name, queue, size, status, desc, speed, date, eta, progress):
             widget.bind("<Button-1>", lambda _e, tid=task.id: self.select_task(tid))
             widget.bind("<Double-Button-1>",
                         lambda _e, t=task: self._open_or_progress(t))
@@ -2569,10 +2734,7 @@ class VibeDownloaderApp(ctk.CTk):
             name += "  ⓘ"
         row["name"].configure(text=name,
                               text_color=C_RED if task.status == "error" else C_TEXT,
-                              font=ctk.CTkFont(family="Segoe UI", size=11,
-                                               weight="bold"
-                                               if task.id == self.selected_id
-                                               else "normal"))
+                              font=ROW_FONT_BOLD if task.id == self.selected_id else ROW_FONT)
 
         labels = {
             "queued": ("Queued", C_MUTED),
@@ -2583,18 +2745,20 @@ class VibeDownloaderApp(ctk.CTk):
             "error": ("Error", C_RED),
         }
         text, color = labels.get(task.status, (task.status, C_MUTED))
+        progress_pct = float(task.progress or 0)
         if task.status == "queued" and task.queue_wait:
             text = "Waiting"
-        if task.status == "downloading":
-            text = f"{task.progress:.0f}%"
+        if task.status in ("downloading", "paused") and 0 < progress_pct < 100:
+            # unfinished files show how far they got, like classic download managers
+            text = f"{progress_pct:.2f}%"
         if getattr(task, "note", "") and task.status in ("downloading", "queued"):
             text = task.note
             color = C_BLUE
         row["status"].configure(text=text, text_color=color)
         row["queue"].configure(text="" if task.status == "completed" or not task.queue_id else "1")
 
-        row["size"].configure(
-            text=f"{format_size(task.downloaded)} / {format_size(task.size)}")
+        # Size = the file's total size (progress is in the Status column)
+        row["size"].configure(text=format_size(task.size) if task.size else "")
 
         if task.status == "downloading" and task.speed:
             row["speed"].configure(text=f"{format_size(task.speed)}/s",
@@ -2608,9 +2772,10 @@ class VibeDownloaderApp(ctk.CTk):
 
         row["description"].configure(text=(task.description or ""))
         row["date"].configure(text=format_date(task.created_at))
-        row["save_to"].configure(text=task.save_dir or "")
 
         progress = max(0.0, min(1.0, (task.progress or 0) / 100.0))
+        if task.status == "completed":
+            progress = 0.0          # finished rows stay clean; the line is for unfinished ones
         row["progress"].set(progress)
         colors = {"downloading": C_BLUE, "paused": C_ORANGE,
                   "pausing": C_ORANGE, "completed": C_GREEN,
@@ -2640,17 +2805,20 @@ class VibeDownloaderApp(ctk.CTk):
             "grabber": "Grabber projects",
             "queues": "Queues",
         })
+        shown = self.__dict__.setdefault("_cat_shown", {})
         for key, btn in self.category_buttons.items():
             label = labels.get(key, key)
             count = counts.get(key, 0)
             selected = key == self.current_category
+            if shown.get(key) == (count, selected, label):
+                continue                         # unchanged: don't redraw the button
+            shown[key] = (count, selected, label)
             try:
                 btn.configure(
                     text=f"{label}  ({count})",
                     fg_color=C_SELECT if selected else "transparent",
                     text_color=C_BLUE if selected else C_TEXT,
-                    font=ctk.CTkFont(family="Segoe UI", size=11,
-                                     weight="bold" if selected else "normal"))
+                    font=self._cat_fonts[selected])
             except Exception:                    # noqa: BLE001
                 pass
 
@@ -2665,7 +2833,7 @@ class VibeDownloaderApp(ctk.CTk):
                  f"{format_size(speed)}/s   •   port {self.server_port}")
         connected = self.httpd is not None
         self.connection_label.configure(
-            text=f"● Extension: {'ready' if connected else 'off'}",
+            text=f"● Browser link {'ready' if connected else 'off'}",
             text_color=C_GREEN if connected else C_RED)
 
     def show_status(self, message, kind="info"):
@@ -2746,6 +2914,7 @@ class VibeDownloaderApp(ctk.CTk):
         if main_visible:                         # a transient of a hidden window is hidden too
             dialog.transient(self)
         dialog.attributes("-topmost", True)
+        window_frame.apply(dialog)
 
         def _grab():
             try:
@@ -2775,9 +2944,10 @@ class VibeDownloaderApp(ctk.CTk):
         ctk.CTkLabel(titles, text="Download File Info", anchor="w",
                      font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
                      text_color=C_TEXT).pack(anchor="w")
-        ctk.CTkLabel(titles, text=f"Category: {cat_name}", anchor="w",
+        cat_header = ctk.CTkLabel(titles, text=f"Category: {cat_name}", anchor="w",
                      text_color=C_MUTED,
-                     font=ctk.CTkFont(family="Segoe UI", size=11)).pack(anchor="w")
+                     font=ctk.CTkFont(family="Segoe UI", size=11))
+        cat_header.pack(anchor="w")
 
         self._info_size_label = ctk.CTkLabel(header, text="", anchor="e",
                                              text_color=C_MUTED,
@@ -2802,7 +2972,7 @@ class VibeDownloaderApp(ctk.CTk):
             default_folder = explicit
         base_name = sanitize_filename(task.name)
         if is_media:
-            if os.path.splitext(base_name)[1].lower() in MEDIA_EXTS:
+            if os.path.splitext(base_name)[1].lower().lstrip(".") in MEDIA_EXTS:
                 base_name = os.path.splitext(base_name)[0]
             base_name = (base_name or "video") + (".mp3" if task.quality == "audio" else ".mp4")
         else:
@@ -2834,6 +3004,10 @@ class VibeDownloaderApp(ctk.CTk):
         label("Category:", 1)
         choices = self._category_choices()
         cat_var = ctk.StringVar(value=cat_name if cat_name in choices else "Other")
+        # keep the header ("Category: ...") in sync with the category box
+        cat_var.trace_add("write", lambda *_: cat_header.configure(
+            text=f"Category: {cat_var.get()}"))
+        cat_header.configure(text=f"Category: {cat_var.get()}")
         combo = ctk.CTkComboBox(form, variable=cat_var, values=choices,
                                 height=30, width=170, corner_radius=4,
                                 fg_color=C_INPUT_BG, border_color=C_BORDER,
@@ -3000,7 +3174,7 @@ class VibeDownloaderApp(ctk.CTk):
             if is_media:
                 task.save_path = ""
                 stem, ext = os.path.splitext(name)
-                clean = sanitize_filename(stem if ext.lower() in MEDIA_EXTS else name) or "video"
+                clean = sanitize_filename(stem if ext.lower().lstrip(".") in MEDIA_EXTS else name) or "video"
                 task.name = clean
             else:
                 if not name or not sanitize_filename(name):
@@ -3165,7 +3339,7 @@ class VibeDownloaderApp(ctk.CTk):
             self.post(update)
 
     def _add_category(self, dialog, combo, cat_var, save_var):
-        name = tk.simpledialog.askstring("New category", "Category name:",
+        name = simpledialog.askstring("New category", "Category name:",
                                          parent=dialog)
         if not name:
             return
@@ -3256,6 +3430,7 @@ class VibeDownloaderApp(ctk.CTk):
         dialog.transient(self)
         dialog.grab_set()
         dialog.configure(fg_color=C_BG)
+        window_frame.apply(dialog)
 
         ctk.CTkLabel(dialog, text="Add a download", anchor="w",
                      font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold")
@@ -3365,6 +3540,7 @@ class VibeDownloaderApp(ctk.CTk):
         window.transient(self)
         window.grab_set()
         window.configure(fg_color=C_BG)
+        window_frame.apply(window)
 
         body = ctk.CTkFrame(window, fg_color=C_BG)
         body.pack(fill="both", expand=True, padx=14, pady=14)
@@ -3472,7 +3648,7 @@ class VibeDownloaderApp(ctk.CTk):
         window.minsize(480, 420)
         window.maxsize(900, 900)
         window.configure(fg_color=C_BG)
-        window.attributes("-topmost", True)
+        window_frame.apply(window, maximize=False)
         try:
             window.grab_set()
         except Exception:                        # noqa: BLE001
@@ -3643,13 +3819,32 @@ class VibeDownloaderApp(ctk.CTk):
 
         section("Tools")
         ytdlp_path = yt_helper.find_ytdlp()
-        version = yt_helper.ytdlp_version(ytdlp_path) if ytdlp_path else ""
-        ytdlp_text = (f"yt-dlp: {version or 'not found'}"
-                      if ytdlp_path else "yt-dlp: not found")
+        # "yt-dlp --version" takes ~1.5 s (a big one-file exe): never block the
+        # window on it - show the cached value or fill it in from a thread
+        cached = yt_helper.ytdlp_version_cached(ytdlp_path) if ytdlp_path else None
+        if not ytdlp_path:
+            ytdlp_text = "yt-dlp: not found"
+        elif cached is not None:
+            ytdlp_text = f"yt-dlp: {cached or 'not found'}"
+        else:
+            ytdlp_text = "yt-dlp: checking version..."
         self.ytdlp_label = ctk.CTkLabel(body, text=ytdlp_text, anchor="w",
                                         font=ctk.CTkFont(family="Segoe UI", size=11),
                                         text_color=C_MUTED if ytdlp_path else C_RED)
         self.ytdlp_label.pack(fill="x", pady=2)
+        if ytdlp_path and cached is None:
+            label = self.ytdlp_label
+
+            def read_version():
+                found = yt_helper.ytdlp_version(ytdlp_path)
+
+                def show():
+                    try:
+                        label.configure(text=f"yt-dlp: {found or 'not found'}")
+                    except Exception:            # noqa: BLE001
+                        pass                     # Options was closed meanwhile
+                self.post(show)
+            threading.Thread(target=read_version, daemon=True).start()
 
         self.ffmpeg_label = ctk.CTkLabel(body, text="", anchor="w",
                                          font=ctk.CTkFont(family="Segoe UI", size=11))
@@ -3837,8 +4032,16 @@ class VibeDownloaderApp(ctk.CTk):
         self._check_app_update()
 
     def _ensure_update_dialog(self):
+        # Opened from Options? Options holds the input grab, which would keep the
+        # update window behind it and unclickable: hand the grab back first.
+        try:
+            holder = self.grab_current()
+            if holder is not None:
+                holder.grab_release()
+        except Exception:                        # noqa: BLE001
+            pass
         if self._update_dialog is not None and self._update_dialog.alive:
-            self._update_dialog.lift()
+            window_frame._bring_to_front(self._update_dialog)
             return self._update_dialog
         palette = {
             "bg": C_BG, "panel": C_PANEL, "border": C_BORDER, "text": C_TEXT,
@@ -4019,7 +4222,7 @@ class VibeDownloaderApp(ctk.CTk):
     def _on_search(self):
         if not hasattr(self, "list_container"):
             return
-        self.search_text = self.search_var.get() if hasattr(self, "search_var") else ""
+        self.search_text = self.search_entry.get() if hasattr(self, "search_entry") else ""
         self._last_order = []
         self.render()
 

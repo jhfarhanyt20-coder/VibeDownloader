@@ -127,18 +127,39 @@ def ensure_ytdlp():
     return None
 
 
+_VERSION_CACHE = {}
+
+
+def _exe_stamp(path):
+    try:
+        return (os.path.abspath(path), os.path.getsize(path), os.path.getmtime(path))
+    except OSError:
+        return None
+
+
+def ytdlp_version_cached(path):
+    """Version from a previous call, or None if it has to be read (slow)."""
+    return _VERSION_CACHE.get(_exe_stamp(path))
+
+
 def ytdlp_version(path=None):
     path = path or ensure_ytdlp()
     if not path:
         return ""
+    stamp = _exe_stamp(path)
+    if stamp in _VERSION_CACHE:
+        return _VERSION_CACHE[stamp]
     try:
         result = subprocess.run(
             [path, "--version"], capture_output=True, text=True,
             timeout=15, creationflags=CREATE_NO_WINDOW, env=child_env(),
         )
-        return (result.stdout or "").strip().splitlines()[0]
+        version = (result.stdout or "").strip().splitlines()[0]
     except Exception:                            # noqa: BLE001
         return ""
+    if stamp:
+        _VERSION_CACHE[stamp] = version          # an update changes size/mtime
+    return version
 
 
 def update_ytdlp(progress_cb=None):
@@ -451,7 +472,8 @@ class YtDlpRunner:
     """Run yt-dlp and translate its output into task progress."""
 
     def __init__(self, url, save_dir, quality="best", headers=None,
-                 on_progress=None, on_file=None, speed_limit=0):
+                 on_progress=None, on_file=None, speed_limit=0, output_name=""):
+        self.output_name = output_name or ""  # fixed file name (raw stream URLs)
         self.url = url
         self.save_dir = save_dir
         self.quality = quality or "best"
@@ -461,8 +483,13 @@ class YtDlpRunner:
         self.speed_limit = max(0, int(speed_limit or 0))
 
     def _build_command(self, exe, ffmpeg):
-        output = os.path.join(self.save_dir,
-                              "%(title).150B [%(id)s].%(ext)s")
+        if self.output_name:
+            # a raw .m3u8/.mpd has no real title ("index", "master"): use ours
+            safe = self.output_name.replace("%", "%%")[:150]
+            output = os.path.join(self.save_dir, safe + ".%(ext)s")
+        else:
+            output = os.path.join(self.save_dir,
+                                  "%(title).150B [%(id)s].%(ext)s")
         command = [
             exe,
             "--newline",

@@ -7,6 +7,121 @@ const DEFAULTS = { port: DEFAULT_PORT, catchAll: true };
 let aliveCache = { at: 0, ok: false };
 const bypass = new Map();          // url -> expiry (downloads we must not catch)
 
+// ------------------------------------------------------------ stream sniffing
+// Remember the real media URLs a page's player loads (mp4, HLS, DASH, audio).
+// If yt-dlp has no extractor for a site, the app downloads one of these instead.
+const STREAM_LIMIT = 30;
+const SEGMENT_EXT = /\.(ts|m4s|m4f|aac|vtt|webvtt|key|jpg|png)(\?|$)/i;
+const MEDIA_EXT = /\.(m3u8|mpd|mp4|m4v|webm|mov|mkv|flv|mp3|m4a|ogg|opus)(\?|$)/i;
+const SKIP_HOSTS = /(^|\.)(googlevideo\.com|youtube\.com|ytimg\.com|doubleclick\.net|googlesyndication\.com)$/i;
+
+function streamKind(url, ctype) {
+  ctype = (ctype || "").toLowerCase();
+  if (/mpegurl/.test(ctype) || /\.m3u8(\?|$)/i.test(url)) return "hls";
+  if (/dash\+xml/.test(ctype) || /\.mpd(\?|$)/i.test(url)) return "dash";
+  if (/^audio\//.test(ctype) || /\.(mp3|m4a|ogg|opus)(\?|$)/i.test(url)) return "audio";
+  if (/^video\//.test(ctype) && !/mp2t/.test(ctype)) return "video";
+  if (MEDIA_EXT.test(url)) return "video";
+  return "";
+}
+
+async function getStreams(tabId) {
+  try {
+    const key = `streams_${tabId}`;
+    const saved = await chrome.storage.session.get({ [key]: [] });
+    return saved[key] || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+async function setStreams(tabId, list) {
+  try {
+    await chrome.storage.session.set({ [`streams_${tabId}`]: list });
+  } catch (e) { /* ignore */ }
+  try {
+    const n = list.length;
+    chrome.action.setBadgeBackgroundColor({ tabId, color: "#6A3DF5" });
+    chrome.action.setBadgeText({ tabId, text: n ? String(n) : "" });
+  } catch (e) { /* tab gone */ }
+}
+
+const streamQueue = new Map();       // tabId -> promise chain (no lost updates)
+
+function rememberStream(tabId, entry) {
+  const prev = streamQueue.get(tabId) || Promise.resolve();
+  const next = prev.then(async () => {
+    const list = await getStreams(tabId);
+    const known = list.find((s) => s.url === entry.url);
+    if (known) {
+      if (entry.size > (known.size || 0)) known.size = entry.size;
+    } else {
+      list.push(entry);
+      if (list.length > STREAM_LIMIT) list.shift();
+    }
+    await setStreams(tabId, list);
+  }).catch(() => {});
+  streamQueue.set(tabId, next);
+}
+
+chrome.webRequest.onHeadersReceived.addListener((details) => {
+  if (details.tabId < 0) return;
+  if (details.type === "main_frame") {          // new page in this tab: forget old streams
+    setStreams(details.tabId, []);
+    return;
+  }
+  const url = details.url || "";
+  if (!/^https?:\/\//i.test(url) || SEGMENT_EXT.test(url)) return;
+  let host = "";
+  try { host = new URL(url).hostname; } catch (e) { return; }
+  if (SKIP_HOSTS.test(host)) return;           // YouTube: yt-dlp handles it properly
+  if (details.statusCode && details.statusCode >= 400) return;
+
+  const headers = details.responseHeaders || [];
+  const get = (name) => {
+    const h = headers.find((x) => x.name.toLowerCase() === name);
+    return h ? h.value || "" : "";
+  };
+  const ctype = get("content-type");
+  const kind = streamKind(url, ctype);
+  if (!kind) return;
+  let size = parseInt(get("content-length") || "0", 10) || 0;
+  const range = get("content-range").match(/\/(\d+)\s*$/);
+  if (range) size = parseInt(range[1], 10) || size;
+  // tiny files are thumbnails / previews / single segments, not the video
+  if ((kind === "video" || kind === "audio") && size && size < 300 * 1024) return;
+
+  rememberStream(details.tabId, { url, kind, ctype, size, at: Date.now() });
+}, { urls: ["http://*/*", "https://*/*"],
+     types: ["main_frame", "media", "xmlhttprequest", "other"] },
+   ["responseHeaders"]);
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  try { chrome.storage.session.remove(`streams_${tabId}`); } catch (e) { /* ignore */ }
+});
+
+// Order: HLS/DASH master first (yt-dlp picks the best quality from it), then the
+// biggest progressive video, then audio. Each link carries its own site's cookies.
+async function streamsForTab(tabId) {
+  const list = (await getStreams(tabId)).slice();
+  const rank = { hls: 0, dash: 1, video: 2, audio: 3 };
+  list.sort((a, b) => {
+    const r = (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9);
+    if (r) return r;
+    if (a.kind === "hls" || a.kind === "dash") {
+      const am = /master|index|playlist/i.test(a.url) ? 0 : 1;
+      const bm = /master|index|playlist/i.test(b.url) ? 0 : 1;
+      return am - bm || a.at - b.at;
+    }
+    return (b.size || 0) - (a.size || 0);
+  });
+  const out = [];
+  for (const s of list.slice(0, 8)) {
+    out.push({ url: s.url, kind: s.kind, size: s.size || 0, cookie: await cookieHeader(s.url) });
+  }
+  return out;
+}
+
 // Only catch downloads the user started with a real click / key press.
 // Pages that start a download on their own are left to the browser.
 const GESTURE_WINDOW_MS = 8000;
@@ -114,6 +229,7 @@ async function sendDownload(rawUrl, options = {}) {
     filename: options.filename || "",
     referrer: options.referrer || "",
     verify: !!options.verify,
+    streams: Array.isArray(options.streams) ? options.streams : [],
     cookie,
     userAgent: self.navigator.userAgent
   };
@@ -152,8 +268,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === "DOWNLOAD") {
         const payload = message.payload || {};
         const tab = sender.tab;
+        // video button: hand over what the player really loaded as a fallback
+        const streams = (payload.kind === "media" && tab && tab.id >= 0)
+          ? await streamsForTab(tab.id) : [];
         const result = await sendDownload(payload.url || (tab && tab.url), {
           ...payload,
+          streams,
           referrer: payload.referrer || (tab && tab.url) || ""
         });
         sendResponse(result);
@@ -324,8 +444,10 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   }
 
   if (!url) return;
+  const streams = (kind === "media" && tab && tab.id >= 0) ? await streamsForTab(tab.id) : [];
   const result = await sendDownload(url, {
     kind,
+    streams,
     referrer: (tab && tab.url) || ""
   });
   if (!result || result.status !== "ok") {

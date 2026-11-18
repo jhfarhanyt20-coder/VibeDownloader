@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "VibeDownloader",
-  "version": "2.6.0",
+  "version": "2.7.0",
   "description": "VibeDownloader - catches your downloads and sends them to the VibeDownloader app.",
   "permissions": [
     "downloads",
     "contextMenus",
     "storage",
     "cookies",
-    "tabs"
+    "tabs",
+    "webRequest"
   ],
   "host_permissions": [
     "http://127.0.0.1/*",
