@@ -102,3 +102,7 @@ The `extension/` folder is bundled with the desktop executable and installed bes
 ## Third-party distribution note
 
 This project packages third-party programs. Review and preserve the relevant licenses/notices for Python packages, yt-dlp, and the specific FFmpeg build before public redistribution. The FFmpeg distribution URL used by the build provides an Essentials build with GPL-enabled components; distributors must meet the license/source obligations that apply to that exact build. Do not remove third-party notices when sharing a release.
+
+## License
+
+VibeDownloader is **proprietary software**, all rights reserved. You may install and use the official app from the [releases page](https://github.com/jhfarhanyt20-coder/VibeDownloader/releases). The source code is public so the app can update itself and so its safety can be checked, but you may **not** modify, copy, rebrand or redistribute it. Third-party parts (yt-dlp, FFmpeg, Python packages) keep their own licenses. See [LICENSE](LICENSE).

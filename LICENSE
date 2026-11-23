@@ -1,0 +1,82 @@
+Copyright (c) 2026 JH Farhan (VibeCoder AI). All rights reserved.
+
+PROPRIETARY SOFTWARE LICENSE - VIBEDOWNLOADER
+
+This software, including its source code, object code, installers, browser
+extension, documentation, user interface text, visual assets, configuration
+and all other related materials (collectively, the "Software"), is the
+exclusive property of JH Farhan (VibeCoder AI) and is protected by copyright
+and other intellectual property laws. The Software is licensed, not sold.
+
+1. USE OF THE OFFICIAL INSTALLER
+
+   You may download the official, unmodified VibeDownloader installer from the
+   official release page (github.com/jhfarhanyt20-coder/VibeDownloader/releases)
+   or the official website, install it, and use the installed application on
+   computers you own or control. This permission covers the official
+   application only, as it is published, and ends if you break this license.
+
+2. NO OTHER LICENSE GRANTED
+
+   No other permission or license, express or implied, is granted to any
+   person or entity to copy, reproduce, modify, adapt, translate, merge,
+   publish, distribute, transmit, sublicense, sell, rent, lease, host as a
+   service, or otherwise exploit the Software, in whole or in part, for any
+   purpose, without the prior written permission of the copyright holder.
+
+3. NO MODIFICATIONS OR DERIVATIVE WORKS
+
+   You may not modify the Software, create derivative works from it, rebrand
+   it, remove or change its copyright notices or branding, redistribute
+   modified or unmodified copies of it, re-upload it to any other website,
+   store or service, or reverse engineer, decompile, or disassemble it, except
+   to the limited extent that applicable law expressly prohibits such
+   restriction.
+
+4. VIEWING IS NOT A LICENSE
+
+   The Software's source code is made available in a public repository so the
+   application can update itself and so its safety can be checked. Merely
+   viewing, accessing, cloning, forking on the hosting platform, or
+   downloading the source does not grant any license or right to use, change,
+   or distribute it beyond the limited rights that the hosting platform's
+   terms of service require. All other rights are expressly reserved.
+
+5. THIRD-PARTY COMPONENTS
+
+   VibeDownloader includes or uses third-party programs and libraries, such as
+   yt-dlp, FFmpeg and Python packages. Each of them remains under its own
+   license (see THIRD_PARTY_NOTICES.md and tools/licenses). Nothing in this
+   license limits the rights those licenses give you for those components.
+   You are responsible for using the Software only to download content you
+   have the right to download.
+
+6. UPDATES
+
+   The Software may check the official release page for updates and install
+   them. Each update is covered by this license.
+
+7. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT.
+
+8. LIMITATION OF LIABILITY
+
+   TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+   COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF,
+   OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+9. TERMINATION
+
+   This license ends automatically if you break any of its terms. You must
+   then stop using the Software and delete all copies.
+
+10. CONTACT
+
+   For permission requests, contact the copyright holder through the official
+   repository (github.com/jhfarhanyt20-coder/VibeDownloader) or website
+   (vibecoderai.onrender.com).
