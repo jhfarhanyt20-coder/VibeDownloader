@@ -1,6 +1,6 @@
 VibeDownloader 2.5.0
 
-For end users: download VibeDownloader_Installer.exe from https://github.com/jhfarhanyt20-coder/VibeDownloader/releases/latest and run it on Windows 10/11 x64. Python, pip, FFmpeg, FFprobe and yt-dlp do not need separate installation.
+For end users: download VibeDownloader_Installer.exe from https://github.com/jhfarhanyt20-coder/BD-Downloader/releases/latest and run it on Windows 10/11 x64. Python, pip, FFmpeg, FFprobe and yt-dlp do not need separate installation.
 
 App updates: Help > Check for Updates, the tray menu, or Options > Application updates. Automatic checks run at startup and every 12 hours while resident. Approve Update now and the Windows permission prompt; the installer verifies its download, retains user data, and restarts the app. Paused downloads can be resumed afterward.
 

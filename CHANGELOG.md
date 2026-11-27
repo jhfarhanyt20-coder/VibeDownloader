@@ -1,5 +1,8 @@
 # CHANGELOG — BD Downloader (formerly VibeDownloader)
 
+## 2.7.4 (2026-11-27)
+- Updates now come from the renamed repository, github.com/jhfarhanyt20-coder/BD-Downloader.
+
 ## 2.7.3 (2026-11-27)
 - New name: BD Downloader (formerly VibeDownloader), with a new solid blue "B"
   icon for the app and the browser extension.

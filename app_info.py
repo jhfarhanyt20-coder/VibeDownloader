@@ -6,8 +6,8 @@ only read public GitHub Releases.
 
 APP_NAME = "VibeDownloader"  # technical id: data folder, extension handshake, installer
 APP_DISPLAY_NAME = "BD Downloader"  # the name people see (was VibeDownloader)
-APP_VERSION = "2.7.3"
-APP_REPO = "jhfarhanyt20-coder/VibeDownloader"
+APP_VERSION = "2.7.4"
+APP_REPO = "jhfarhanyt20-coder/BD-Downloader"
 INSTALLER_ASSET_NAME = "VibeDownloader_Installer.exe"
 CHECKSUM_ASSET_NAME = "SHA256SUMS.txt"
 APP_RELEASES_URL = f"https://github.com/{APP_REPO}/releases"

@@ -20,7 +20,7 @@ must pass actual install, frozen-app/tool startup, in-place upgrade, data
 retention, and uninstall checks on a disposable Windows runner before it
 publishes a release.
 
-Release: https://github.com/jhfarhanyt20-coder/VibeDownloader/releases/tag/v2.5.0
+Release: https://github.com/jhfarhanyt20-coder/BD-Downloader/releases/tag/v2.5.0
 
 Installer checksums are per-build outputs. Use `SHA256SUMS.txt` attached to the
 same GitHub Release as the installer, not a historical source-tree checksum.

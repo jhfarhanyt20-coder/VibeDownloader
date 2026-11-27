@@ -2,7 +2,7 @@
 
 ## ব্যবহারকারীরা যেভাবে update পাবেন
 
-1. প্রথমবার [latest release](https://github.com/jhfarhanyt20-coder/VibeDownloader/releases/latest) থেকে **VibeDownloader_Installer.exe** install করবেন।
+1. প্রথমবার [latest release](https://github.com/jhfarhanyt20-coder/BD-Downloader/releases/latest) থেকে **VibeDownloader_Installer.exe** install করবেন।
 2. App startup-এ এবং tray-তে চলার সময় latest stable release check করে। সফল check-এর মধ্যে অন্তত **১২ ঘণ্টা** ব্যবধান থাকে।
 3. সঙ্গে সঙ্গে check করতে **Help → Check for Updates**, tray menu-এর **Check for Updates**, অথবা **Options → Application updates** ব্যবহার করবেন।
 4. নতুন version থাকলে release notes এবং download size দেখাবে। **Update now** চাপলে installer download ও SHA-256 verify হবে।
