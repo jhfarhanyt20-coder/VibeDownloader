@@ -1,12 +1,14 @@
-# VibeDownloader 2.5.0 — Windows download manager with verified updates
+# BD Downloader — Windows download manager with verified updates
 
-VibeDownloader is a Windows 10/11 x64 download manager with multi-connection direct downloads, pause/resume, a classic light/dark interface, optional Chrome/Edge integration, and verified GitHub Release updates.
+*Formerly VibeDownloader. Same app, same settings, new name.*
+
+BD Downloader is a Windows 10/11 x64 download manager with multi-connection direct downloads, pause/resume, a classic light/dark interface, optional Chrome/Edge integration, and verified GitHub Release updates.
 
 ## For the person using the app
 
 Download and run **[`VibeDownloader_Installer.exe`](https://github.com/jhfarhanyt20-coder/VibeDownloader/releases/latest/download/VibeDownloader_Installer.exe)** from the [latest release](https://github.com/jhfarhanyt20-coder/VibeDownloader/releases/latest). The full installer includes the app, Python runtime and required packages, `yt-dlp`, FFmpeg/FFprobe, and the browser-extension files. An end user does not need to install Python, run `pip`, or fetch FFmpeg separately.
 
-The installer can install the desktop application and create shortcuts. Chrome and Edge intentionally restrict silent installation of locally unpacked extensions. To let the browser capture downloads, start VibeDownloader, click **Install / Reload Extension**, then enable **Developer mode** and choose **Load unpacked** in the browser page that opens. The extension folder path is copied to the clipboard. This is a one-time browser security step; it cannot safely be removed by a normal desktop installer.
+The installer can install the desktop application and create shortcuts. Chrome and Edge intentionally restrict silent installation of locally unpacked extensions. To let the browser capture downloads, start BD Downloader, click **Install / Reload Extension**, then enable **Developer mode** and choose **Load unpacked** in the browser page that opens. The extension folder path is copied to the clipboard. This is a one-time browser security step; it cannot safely be removed by a normal desktop installer.
 
 ## App updates
 
@@ -90,7 +92,7 @@ The `extension/` folder is bundled with the desktop executable and installed bes
 
 | Symptom | What to check |
 |---|---|
-| Extension says app is not running | Start VibeDownloader; the extension communicates through localhost port 8765 (the app can select another port if busy). |
+| Extension says app is not running | Start BD Downloader; the extension communicates through localhost port 8765 (the app can select another port if busy). |
 | Download is not faster with more connections | The host may throttle connections or not support `Range`; try 8 connections or let it fall back to one stream. |
 | HTTP 403/404/429 | The link may need a fresh login/cookie, may have expired, or the host may be throttling requests. |
 | YouTube asks you to sign in | The site may require browser cookies or a fresh yt-dlp version. Website behavior can change independently of the app. |
@@ -105,4 +107,4 @@ This project packages third-party programs. Review and preserve the relevant lic
 
 ## License
 
-VibeDownloader is **proprietary software**, all rights reserved. You may install and use the official app from the [releases page](https://github.com/jhfarhanyt20-coder/VibeDownloader/releases). The source code is public so the app can update itself and so its safety can be checked, but you may **not** modify, copy, rebrand or redistribute it. Third-party parts (yt-dlp, FFmpeg, Python packages) keep their own licenses. See [LICENSE](LICENSE).
+BD Downloader is **proprietary software**, all rights reserved. You may install and use the official app from the [releases page](https://github.com/jhfarhanyt20-coder/VibeDownloader/releases). The source code is public so the app can update itself and so its safety can be checked, but you may **not** modify, copy, rebrand or redistribute it. Third-party parts (yt-dlp, FFmpeg, Python packages) keep their own licenses. See [LICENSE](LICENSE).
