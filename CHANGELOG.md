@@ -1,5 +1,10 @@
 # CHANGELOG — VibeDownloader
 
+## 2.7.2 (2026-11-27)
+- Update checks keep working when GitHub limits its API for your network (60
+  checks an hour): VibeDownloader then checks through the normal release page,
+  with the same checksum verification.
+
 ## 2.7.1 (2026-11-27)
 - Quiet notifications, like every VibeCoder app: no Windows "ding" when a
   download finishes, VibeDownloader's own soft chime instead, and the tray note

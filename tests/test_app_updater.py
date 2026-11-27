@@ -120,6 +120,24 @@ class ReleaseCheckTests(unittest.TestCase):
             with self.assertRaisesRegex(updater.UpdateError, "internet"):
                 updater.check_for_updates("2.5.0")
 
+    def test_limited_api_falls_back_to_the_release_pages(self):
+        latest = f"https://github.com/{APP_REPO}/releases/latest"
+        def fake_get(url, **_kwargs):
+            if url == updater.APP_UPDATE_URL:
+                return Response(status=403)
+            if url == latest:
+                return Response(status=302, headers={"Location": f"https://github.com/{APP_REPO}/releases/tag/{TAG}"})
+            if url == CHECKSUM_URL:
+                return checksum_response()
+            if url == DOWNLOAD_URL:
+                return Response(body=b"", headers={"Content-Length": str(len(PAYLOAD))})
+            return Response(status=404)
+        with patch("app_updater.requests.get", side_effect=fake_get):
+            info = updater.check_for_updates("2.5.0")
+        self.assertEqual((info.version, info.download_url, info.sha256, info.size), ("2.6.0", DOWNLOAD_URL, DIGEST, len(PAYLOAD)))
+        with patch("app_updater.requests.get", side_effect=fake_get):
+            self.assertIsNone(updater.check_for_updates("2.6.0"), "same version stays up to date")
+
     def test_no_fallback_to_an_arbitrary_exe_or_html_page(self):
         data = release_data()
         data["assets"][0]["name"] = "Other.exe"

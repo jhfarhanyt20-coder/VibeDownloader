@@ -139,6 +139,38 @@ def _read_checksum(url: str) -> str:
     return matches[0]
 
 
+def _check_without_api(installed_version: tuple[int, int, int]) -> UpdateInfo | None:
+    """The same check through GitHub's normal release pages, which are not rate
+    limited like the API: the latest tag from the /releases/latest redirect, the
+    checksum from SHA256SUMS.txt and the size from the installer download."""
+    prefix = f"https://github.com/{APP_REPO}/releases/tag/"
+    with requests.get(
+        f"https://github.com/{APP_REPO}/releases/latest", allow_redirects=False, stream=True,
+        timeout=(10, 25), headers={"User-Agent": USER_AGENT},
+    ) as response:
+        location = response.headers.get("Location") if response.status_code in (301, 302, 303, 307, 308) else None
+    if not location:
+        raise UpdateError("GitHub temporarily limited update checks. Try again later.")
+    location = urljoin(f"https://github.com/{APP_REPO}/releases/latest", location)
+    if not location.startswith(prefix):
+        raise UpdateError("GitHub returned an unexpected release address.")
+    tag = location[len(prefix):]
+    latest_version = parse_version(tag)
+    if latest_version <= installed_version:
+        return None
+    version = tag[1:] if tag.startswith("v") else tag
+    url = f"https://github.com/{APP_REPO}/releases/download/{tag}/{INSTALLER_ASSET_NAME}"
+    checksum = _read_checksum(f"https://github.com/{APP_REPO}/releases/download/{tag}/{CHECKSUM_ASSET_NAME}")
+    with _open_asset(url) as installer:
+        try:
+            size = int(installer.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            size = 0
+    if not MIN_INSTALLER_SIZE <= size <= MAX_INSTALLER_SIZE:
+        raise UpdateError("The release installer has an unexpected file size.")
+    return UpdateInfo(version, tag, url, size, checksum, f"https://github.com/{APP_REPO}/releases/tag/{tag}")
+
+
 def check_for_updates(current: str = APP_VERSION) -> UpdateInfo | None:
     """Return a verified newer stable release; distinguish errors from up to date."""
     installed_version = parse_version(current)
@@ -152,11 +184,17 @@ def check_for_updates(current: str = APP_VERSION) -> UpdateInfo | None:
         ) as response:
             if response.status_code == 404:
                 raise UpdateError("No public app release is available yet. Check the releases page.")
-            if response.status_code in (403, 429):
-                raise UpdateError("GitHub temporarily limited update checks. Try again later.")
-            if response.status_code != 200:
+            limited = response.status_code in (403, 429) or response.status_code >= 500
+            if not limited and response.status_code != 200:
                 raise UpdateError(f"GitHub could not check for updates (HTTP {response.status_code}).")
-            data = response.json()
+            data = None if limited else response.json()
+        if limited:
+            # The API is limited for this network (60 checks an hour) or busy:
+            # check through the normal release pages instead.
+            try:
+                return _check_without_api(installed_version)
+            except (UpdateError, requests.RequestException, ValueError, TypeError):
+                raise UpdateError("GitHub temporarily limited update checks. Try again later.") from None
         if not isinstance(data, dict):
             raise UpdateError("GitHub returned unreadable release information.")
         if data.get("draft") or data.get("prerelease"):
