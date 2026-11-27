@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "VibeDownloader",
+  "name": "BD Downloader",
   "version": "2.7.0",
-  "description": "VibeDownloader - catches your downloads and sends them to the VibeDownloader app.",
+  "description": "BD Downloader - catches your downloads and sends them to the BD Downloader app.",
   "permissions": [
     "downloads",
     "contextMenus",

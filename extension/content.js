@@ -1,4 +1,4 @@
-// VibeDownloader content script
+// BD Downloader content script
 // 1) catches clicks on downloadable links on ANY website
 // 2) adds a draggable download button on top of every <video> on every website
 
@@ -87,15 +87,15 @@
   async function handleDownload(url, options, label, canFallback = true) {
     const result = await sendDownload(url, options);
     if (result && result.status === "ok") {
-      toast((label || "Download") + " added to VibeDownloader");
+      toast((label || "Download") + " added to BD Downloader");
       appAlive = true;
     } else {
       const error = (result && result.error) || "Not connected";
       if (canFallback) {
-        toast("VibeDownloader: " + error + " - using the browser instead", true);
+        toast("BD Downloader: " + error + " - using the browser instead", true);
         browserFallback(url, options && options.filename);
       } else {
-        toast("VibeDownloader: " + error + " - open the VibeDownloader app and try again", true);
+        toast("BD Downloader: " + error + " - open the BD Downloader app and try again", true);
       }
       if (!result || /not running|not connected/i.test(error)) appAlive = false;
     }
@@ -224,7 +224,7 @@
         btn.appendChild(img);
       }
       btn.appendChild(document.createTextNode("Download"));
-      btn.title = "Download with VibeDownloader";
+      btn.title = "Download with BD Downloader";
 
       let moved = false, sx = 0, sy = 0, sOff = null;
       btn.addEventListener("pointerdown", (e) => {

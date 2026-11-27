@@ -1,4 +1,9 @@
-# CHANGELOG — VibeDownloader
+# CHANGELOG — BD Downloader (formerly VibeDownloader)
+
+## 2.7.3 (2026-11-27)
+- New name: BD Downloader (formerly VibeDownloader), with a new solid blue "B"
+  icon for the app and the browser extension.
+- Your downloads folder, settings and the browser extension keep working as before.
 
 ## 2.7.2 (2026-11-27)
 - Update checks keep working when GitHub limits its API for your network (60

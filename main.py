@@ -29,7 +29,7 @@ import requests
 from PIL import Image, ImageTk
 
 from classic_icons import toolbar_icon
-from app_info import APP_NAME, APP_VERSION
+from app_info import APP_DISPLAY_NAME, APP_NAME, APP_VERSION
 import app_updater
 import downloader as engine
 from update_dialog import AppUpdateDialog
@@ -797,7 +797,7 @@ class _ProgressWindow:
         _ensure_classic_style(app)
         bg = app._classic_bg
         self.window = tk.Toplevel(app)
-        self.window.title(f"0% {task.name} - {APP_NAME}")
+        self.window.title(f"0% {task.name} - {APP_DISPLAY_NAME}")
         self.window.configure(bg=bg)
         self.window.resizable(False, False)
         self._details_open = True
@@ -973,7 +973,7 @@ class _ProgressWindow:
             progress = float(task.progress or 0)
             size = task.size or 0
             done = task.downloaded or 0
-            self.window.title(f"{int(progress)}% {task.name} - {APP_NAME}")
+            self.window.title(f"{int(progress)}% {task.name} - {APP_DISPLAY_NAME}")
             task.completion_action = self._opt_var.get()
             self._apply_limit(task)
 
@@ -1077,7 +1077,7 @@ class _CompleteDialog:
         self.app = app
         _ensure_classic_style(app)
         win = self.window = tk.Toplevel(app)
-        win.title(f"Download complete - {APP_NAME}")
+        win.title(f"Download complete - {APP_DISPLAY_NAME}")
         win.configure(bg=app._classic_bg)
         win.resizable(False, False)
 
@@ -1238,7 +1238,7 @@ class VibeDownloaderApp(ctk.CTk):
         self.startup_launch = bool(startup_launch)
         if self.startup_launch:
             self.withdraw()
-        self.title(f"{APP_NAME} {APP_VERSION}")
+        self.title(f"{APP_DISPLAY_NAME} {APP_VERSION}")
         # a medium window by default (maximize for more); never larger than the screen
         width = min(960, max(800, self.winfo_screenwidth() - 160))
         height = min(580, max(460, self.winfo_screenheight() - 180))
@@ -1441,7 +1441,7 @@ class VibeDownloaderApp(ctk.CTk):
                 ("Install / Reload Browser Extension", self.install_extension),
                 ("Check for Updates", self.check_for_updates),
                 None,
-                ("About VibeDownloader", self.show_about),
+                ("About BD Downloader", self.show_about),
             ]),
         ]
 
@@ -3588,7 +3588,7 @@ class VibeDownloaderApp(ctk.CTk):
                      font=ctk.CTkFont(family="Segoe UI", size=11)).pack(anchor="w", pady=(10, 2))
         action_labels = {
             "none": "Do nothing",
-            "exit": "Exit VibeDownloader",
+            "exit": "Exit BD Downloader",
             "sleep": "Put the computer to sleep",
             "shutdown": "Shut down the computer",
         }
@@ -3870,7 +3870,7 @@ class VibeDownloaderApp(ctk.CTk):
                       command=lambda: self._open_path(DATA_DIR)
                       ).pack(side="left", padx=6)
         section("Application updates")
-        ctk.CTkLabel(body, text=f"VibeDownloader {APP_VERSION}  |  Stable Windows releases",
+        ctk.CTkLabel(body, text=f"BD Downloader {APP_VERSION}  |  Stable Windows releases",
                      anchor="w", text_color=C_MUTED,
                      font=ctk.CTkFont(family="Segoe UI", size=11)).pack(fill="x", pady=2)
         ctk.CTkButton(body, text="Check for App Updates", width=170, height=32,
@@ -4170,7 +4170,7 @@ class VibeDownloaderApp(ctk.CTk):
     def show_about(self):
         messagebox.showinfo(
             "About",
-            f"{APP_NAME} {APP_VERSION}\n\n"
+            f"{APP_DISPLAY_NAME} {APP_VERSION}\n\n"
             "Fast multi-connection download manager\n"
             "• multi-connection downloads with resume\n"
             "• yt-dlp for YouTube and 1800+ sites\n"
@@ -4286,14 +4286,14 @@ class VibeDownloaderApp(ctk.CTk):
             quiet_notify.play_chime()
         icon = getattr(self, "tray_icon", None)
         if icon is not None:
-            quiet_notify.quiet_notify(icon, f"Download complete: {task.name}", APP_NAME)
+            quiet_notify.quiet_notify(icon, f"Download complete: {task.name}", APP_DISPLAY_NAME)
 
     def _queue_finished(self, action):
         self.show_status("Queue finished", "success")
         if action in (None, "", "none"):
             return
         labels = {
-            "exit": "exit VibeDownloader",
+            "exit": "exit BD Downloader",
             "sleep": "put this PC to sleep",
             "shutdown": "shut down this PC",
         }
@@ -4310,7 +4310,7 @@ class VibeDownloaderApp(ctk.CTk):
             subprocess.Popen(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"])
         elif action == "shutdown":
             subprocess.Popen(["shutdown", "/s", "/t", "20", "/c",
-                              "VibeDownloader: queue finished"])
+                              "BD Downloader: queue finished"])
 
     def _sync_windows_startup(self):
         if os.name != "nt":
@@ -4401,8 +4401,8 @@ class VibeDownloaderApp(ctk.CTk):
             if not getattr(self, "_tray_hint_shown", False):
                 self._tray_hint_shown = True
                 quiet_notify.quiet_notify(getattr(self, "tray_icon", None),
-                                          "VibeDownloader is still running in the tray. Right-click the icon and choose Exit to close it.",
-                                          APP_NAME)
+                                          "BD Downloader is still running in the tray. Right-click the icon and choose Exit to close it.",
+                                          APP_DISPLAY_NAME)
             return "break"
         self._real_close()
         return "break"
@@ -4506,7 +4506,7 @@ class VibeDownloaderApp(ctk.CTk):
         )
         try:
             self.tray_icon = pystray.Icon("VibeDownloader", image,
-                                          "VibeDownloader", menu)
+                                          "BD Downloader", menu)
             self.tray_icon.run_detached()
         except Exception as exc:                 # noqa: BLE001
             self._tray_log(f"tray start failed: {exc!r}")
@@ -4581,7 +4581,7 @@ def main():
         app.after(200, lambda: app.attributes("-topmost", False))
     if updated:
         app.after(900, lambda: messagebox.showinfo(
-            "Update complete", f"{APP_NAME} was updated successfully to version {APP_VERSION}."))
+            "Update complete", f"{APP_DISPLAY_NAME} was updated successfully to version {APP_VERSION}."))
     app.mainloop()
 
 

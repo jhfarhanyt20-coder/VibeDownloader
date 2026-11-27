@@ -9,7 +9,10 @@
   !error "APP_VERSION is required. Use build_windows.bat or the GitHub Actions workflow."
 !endif
 !ifndef APP_NAME
-  !define APP_NAME "VibeDownloader"
+  !define APP_NAME "VibeDownloader"  ; technical id: folders, registry, mutex
+!endif
+!ifndef APP_DISPLAY
+  !define APP_DISPLAY "BD Downloader"  ; the name people see
 !endif
 !ifndef APP_EXE
   !define APP_EXE "VibeDownloader.exe"
@@ -23,7 +26,7 @@
 !define APP_KEY "Software\${APP_NAME}"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
-Name "${APP_NAME} ${APP_VERSION}"
+Name "${APP_DISPLAY} ${APP_VERSION}"
 OutFile "${INSTALLER_OUTPUT}"
 InstallDir "$PROGRAMFILES64\${APP_NAME}"
 InstallDirRegKey HKLM "${APP_KEY}" "InstallDir"
@@ -31,17 +34,17 @@ RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 ShowInstDetails show
 VIProductVersion "${APP_VERSION}.0"
-VIAddVersionKey /LANG=1033 "ProductName" "${APP_NAME}"
+VIAddVersionKey /LANG=1033 "ProductName" "${APP_DISPLAY}"
 VIAddVersionKey /LANG=1033 "ProductVersion" "${APP_VERSION}"
-VIAddVersionKey /LANG=1033 "FileDescription" "${APP_NAME} Windows installer"
+VIAddVersionKey /LANG=1033 "FileDescription" "${APP_DISPLAY} Windows installer"
 VIAddVersionKey /LANG=1033 "FileVersion" "${APP_VERSION}"
-VIAddVersionKey /LANG=1033 "LegalCopyright" "${APP_NAME} contributors"
+VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright (c) 2026 Jamil Hussain (JH Farhan), BDCoder AI"
 
 !define MUI_ICON "VibeDownloader.ico"
 !define MUI_UNICON "VibeDownloader.ico"
 !define MUI_ABORTWARNING
 !define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_NAME}"
+!define MUI_FINISHPAGE_RUN_TEXT "Start ${APP_DISPLAY}"
 !define MUI_FINISHPAGE_RUN_FUNCTION LaunchApp
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
@@ -65,7 +68,7 @@ Function ${PREFIX}RequireAppClosed
   ${If} $1 != 0
     System::Call 'kernel32::CloseHandle(p r1)'
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
-      "Please exit ${APP_NAME} from its tray menu before continuing. Your downloads and history will be kept." \
+      "Please exit ${APP_DISPLAY} from its tray menu before continuing. Your downloads and history will be kept." \
       /SD IDCANCEL IDRETRY retry
     SetErrorLevel 2
     Abort
@@ -77,12 +80,12 @@ FunctionEnd
 
 Function .onInit
   ${IfNot} ${RunningX64}
-    MessageBox MB_OK|MB_ICONSTOP "${APP_NAME} requires 64-bit Windows." /SD IDOK
+    MessageBox MB_OK|MB_ICONSTOP "${APP_DISPLAY} requires 64-bit Windows." /SD IDOK
     SetErrorLevel 2
     Abort
   ${EndIf}
   ${IfNot} ${AtLeastWin10}
-    MessageBox MB_OK|MB_ICONSTOP "${APP_NAME} requires Windows 10 or newer." /SD IDOK
+    MessageBox MB_OK|MB_ICONSTOP "${APP_DISPLAY} requires Windows 10 or newer." /SD IDOK
     SetErrorLevel 2
     Abort
   ${EndIf}
@@ -153,7 +156,7 @@ Function .onInstSuccess
   ${EndIf}
 FunctionEnd
 
-Section "Install ${APP_NAME}"
+Section "Install ${APP_DISPLAY}"
   SetShellVarContext all
   SetRegView 64
   SetOutPath "$INSTDIR"
@@ -169,9 +172,12 @@ Section "Install ${APP_NAME}"
   File /r "extension\*"
   SetOutPath "$INSTDIR"
   CreateDirectory "$SMPROGRAMS\${APP_NAME}"
-  CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+  ; the shortcuts carry the new name; remove the ones from before the rename
+  Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
+  Delete "$DESKTOP\${APP_NAME}.lnk"
+  CreateShortCut "$SMPROGRAMS\${APP_NAME}\${APP_DISPLAY}.lnk" "$INSTDIR\${APP_EXE}"
   CreateShortCut "$SMPROGRAMS\${APP_NAME}\Uninstall.lnk" "$INSTDIR\uninst.exe"
-  CreateShortCut "$DESKTOP\${APP_NAME}.lnk" "$INSTDIR\${APP_EXE}"
+  CreateShortCut "$DESKTOP\${APP_DISPLAY}.lnk" "$INSTDIR\${APP_EXE}"
   WriteUninstaller "$INSTDIR\uninst.exe"
 
   ; Remove the old 32-bit registration only when it describes this install.
@@ -183,13 +189,13 @@ Section "Install ${APP_NAME}"
   ${EndIf}
   SetRegView 64
   WriteRegStr HKLM "${APP_KEY}" "InstallDir" "$INSTDIR"
-  WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${APP_NAME}"
+  WriteRegStr HKLM "${UNINST_KEY}" "DisplayName" "${APP_DISPLAY}"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayVersion" "${APP_VERSION}"
   WriteRegStr HKLM "${UNINST_KEY}" "DisplayIcon" "$INSTDIR\${APP_EXE}"
   WriteRegStr HKLM "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKLM "${UNINST_KEY}" "UninstallString" '"$INSTDIR\uninst.exe"'
   WriteRegStr HKLM "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\uninst.exe" /S'
-  WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "${APP_NAME}"
+  WriteRegStr HKLM "${UNINST_KEY}" "Publisher" "BDCoder AI (Jamil Hussain)"
   WriteRegDWORD HKLM "${UNINST_KEY}" "NoModify" 1
   WriteRegDWORD HKLM "${UNINST_KEY}" "NoRepair" 1
   ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2
@@ -206,11 +212,15 @@ Section "Uninstall"
   SetShellVarContext all
   Delete "$DESKTOP\${APP_NAME}.lnk"
   Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
+  Delete "$SMPROGRAMS\${APP_NAME}\${APP_DISPLAY}.lnk"
+  Delete "$DESKTOP\${APP_DISPLAY}.lnk"
   Delete "$SMPROGRAMS\${APP_NAME}\Uninstall.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
   SetShellVarContext current
   Delete "$DESKTOP\${APP_NAME}.lnk"
   Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
+  Delete "$SMPROGRAMS\${APP_NAME}\${APP_DISPLAY}.lnk"
+  Delete "$DESKTOP\${APP_DISPLAY}.lnk"
   Delete "$SMPROGRAMS\${APP_NAME}\Uninstall.lnk"
   RMDir "$SMPROGRAMS\${APP_NAME}"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_NAME}"

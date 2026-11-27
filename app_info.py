@@ -4,8 +4,9 @@ Never put a GitHub token or another credential in this module. Update checks
 only read public GitHub Releases.
 """
 
-APP_NAME = "VibeDownloader"
-APP_VERSION = "2.7.2"
+APP_NAME = "VibeDownloader"  # technical id: data folder, extension handshake, installer
+APP_DISPLAY_NAME = "BD Downloader"  # the name people see (was VibeDownloader)
+APP_VERSION = "2.7.3"
 APP_REPO = "jhfarhanyt20-coder/VibeDownloader"
 INSTALLER_ASSET_NAME = "VibeDownloader_Installer.exe"
 CHECKSUM_ASSET_NAME = "SHA256SUMS.txt"

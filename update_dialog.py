@@ -13,7 +13,7 @@ import customtkinter as ctk
 
 import app_updater
 import window_frame
-from app_info import APP_NAME, APP_RELEASES_URL, APP_VERSION
+from app_info import APP_DISPLAY_NAME, APP_NAME, APP_RELEASES_URL, APP_VERSION
 
 
 class AppUpdateDialog(ctk.CTkToplevel):
@@ -31,7 +31,7 @@ class AppUpdateDialog(ctk.CTkToplevel):
         self.state_name = "checking"
         self._closed = False
         self._cancel = threading.Event()
-        self.title(f"{APP_NAME} updates")
+        self.title(f"{APP_DISPLAY_NAME} updates")
         self.geometry("580x490")
         self.resizable(False, False)
         self.configure(fg_color=palette["bg"])
@@ -130,7 +130,7 @@ class AppUpdateDialog(ctk.CTkToplevel):
         self._stop_progress()
         self.progress.set(1)
         self.headline.configure(text="You're up to date")
-        self._set_notes(f"{APP_NAME} {APP_VERSION} is the newest version available to this app.")
+        self._set_notes(f"{APP_DISPLAY_NAME} {APP_VERSION} is the newest version available to this app.")
         self.status.configure(text="Automatic checks use stable releases only.",
                               text_color=self.palette["success"])
         self.primary.configure(state="normal", text="Check again")

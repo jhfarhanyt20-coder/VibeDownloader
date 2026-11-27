@@ -1,4 +1,4 @@
-// VibeDownloader popup
+// BD Downloader popup
 const DEFAULTS = { port: 8765, catchAll: true };
 const MEDIA_HOST = /(youtube\.com|youtu\.be|vimeo\.com|tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com|soundcloud\.com|twitch\.tv|dailymotion\.com|reddit\.com|bilibili\.com)/i;
 
@@ -18,7 +18,7 @@ function showStatus(ok, port) {
     statusEl.className = "status connected";
   } else {
     statusEl.innerHTML =
-      "<strong>⚠ App not running</strong><br>Start VibeDownloader first";
+      "<strong>⚠ App not running</strong><br>Start BD Downloader first";
     statusEl.className = "status error";
   }
 }
@@ -37,14 +37,14 @@ async function pingApp() {
     const ok = data && data.status === "ok";
     showStatus(ok, port);
     if (ok && data.downloads != null) {
-      showAppBtn.textContent = `↗ Show VibeDownloader window (${data.downloads})`;
+      showAppBtn.textContent = `↗ Show BD Downloader window (${data.downloads})`;
     } else {
-      showAppBtn.textContent = "↗ Show VibeDownloader window";
+      showAppBtn.textContent = "↗ Show BD Downloader window";
     }
     return ok;
   } catch (e) {
     showStatus(false, port);
-    showAppBtn.textContent = "↗ Show VibeDownloader window";
+    showAppBtn.textContent = "↗ Show BD Downloader window";
     return false;
   }
 }
@@ -64,7 +64,7 @@ async function showApp() {
     const data = await res.json();
     if (data && data.status === "ok" && data.shown) {
       showAppBtn.textContent = "✓ Window shown";
-      setTimeout(() => { showAppBtn.textContent = "↗ Show VibeDownloader window"; }, 1800);
+      setTimeout(() => { showAppBtn.textContent = "↗ Show BD Downloader window"; }, 1800);
     }
   } catch (e) {
     showAppBtn.textContent = "✗ App not running";
@@ -128,7 +128,7 @@ pageBtn.addEventListener("click", async () => {
   });
 
   if (result && result.status === "ok") {
-    pageBtn.textContent = "✓ Added to VibeDownloader";
+    pageBtn.textContent = "✓ Added to BD Downloader";
     setTimeout(() => {
       pageBtn.textContent = previous;
       pageBtn.disabled = false;

@@ -1,4 +1,4 @@
-// VibeDownloader - background service worker
+// BD Downloader - background service worker
 // Catches every browser download and forwards it to the desktop app.
 
 const DEFAULT_PORT = 8765;
@@ -244,7 +244,7 @@ async function sendDownload(rawUrl, options = {}) {
     return result;
   } catch (e) {
     setBadge("!", "#C62828");
-    return { status: "error", error: "VibeDownloader is not running" };
+    return { status: "error", error: "BD Downloader is not running" };
   }
 }
 
@@ -356,7 +356,7 @@ chrome.downloads.onCreated.addListener(async (item) => {
     }
   } catch (e) {
     await giveBack();
-    console.warn("VibeDownloader intercept failed", e);
+    console.warn("BD Downloader intercept failed", e);
   }
 });
 
@@ -365,17 +365,17 @@ function rebuildMenus() {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: "vibe-link",
-      title: "Download with VibeDownloader",
+      title: "Download with BD Downloader",
       contexts: ["link"]
     });
     chrome.contextMenus.create({
       id: "vibe-media",
-      title: "Download with VibeDownloader",
+      title: "Download with BD Downloader",
       contexts: ["image", "video", "audio"]
     });
     chrome.contextMenus.create({
       id: "vibe-page",
-      title: "Download this page with VibeDownloader",
+      title: "Download this page with BD Downloader",
       contexts: ["page"]
     });
     chrome.contextMenus.create({
