@@ -34,6 +34,7 @@ import app_updater
 import downloader as engine
 from update_dialog import AppUpdateDialog
 import windows_startup
+import quiet_notify
 import yt_helper
 import window_frame
 # themed replacements: every message box uses our own window frame
@@ -4279,18 +4280,13 @@ class VibeDownloaderApp(ctk.CTk):
         self.render()
 
     def _notify_complete(self, task):
-        if self.settings.get("sound_on_complete", True) and os.name == "nt":
-            try:
-                import winsound
-                winsound.MessageBeep(winsound.MB_OK)
-            except Exception:                    # noqa: BLE001
-                pass
+        # Quiet, like every VibeCoder app: no Windows "ding", our own soft chime,
+        # and a silent tray note that leaves by itself after a few seconds.
+        if self.settings.get("sound_on_complete", True):
+            quiet_notify.play_chime()
         icon = getattr(self, "tray_icon", None)
         if icon is not None:
-            try:
-                icon.notify(f"Download complete: {task.name}", APP_NAME)
-            except Exception:                    # noqa: BLE001
-                pass
+            quiet_notify.quiet_notify(icon, f"Download complete: {task.name}", APP_NAME)
 
     def _queue_finished(self, action):
         self.show_status("Queue finished", "success")
@@ -4402,6 +4398,11 @@ class VibeDownloaderApp(ctk.CTk):
         if self.settings.get("close_to_tray", True) and self._start_tray():
             self.withdraw()
             self.show_status("Still running in the tray")
+            if not getattr(self, "_tray_hint_shown", False):
+                self._tray_hint_shown = True
+                quiet_notify.quiet_notify(getattr(self, "tray_icon", None),
+                                          "VibeDownloader is still running in the tray. Right-click the icon and choose Exit to close it.",
+                                          APP_NAME)
             return "break"
         self._real_close()
         return "break"
