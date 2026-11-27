@@ -1,5 +1,12 @@
 # CHANGELOG — VibeDownloader
 
+## 2.7.1 (2026-11-27)
+- Quiet notifications, like every VibeCoder app: no Windows "ding" when a
+  download finishes, VibeDownloader's own soft chime instead, and the tray note
+  leaves by itself after a few seconds.
+- The first time the window is closed to the tray, a short note says it is
+  still running there.
+
 ## 2.7.0 (2026-11-19)
 - Our own title bar on every window - main window, dialogs, progress, update
   and message boxes - in the theme's colors, with rounded corners. Drag to
