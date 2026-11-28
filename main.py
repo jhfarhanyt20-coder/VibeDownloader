@@ -197,13 +197,25 @@ EXT_CATEGORY = {
 
 
 # ----------------------------------------------------------------------- helpers
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {
+    f"LPT{i}" for i in range(1, 10)}
+
+
 def sanitize_filename(name):
     if not name:
         return ""
     name = str(name).replace("\\", "/").split("/")[-1]
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
     name = name.strip().strip(".")
-    return name[:180]
+    if len(name) > 180:
+        # shorten the name, never the extension (".pdf" must stay ".pdf")
+        stem, ext = os.path.splitext(name)
+        ext = ext if 1 < len(ext) <= 12 else ""
+        name = stem[:180 - len(ext)].rstrip(" .") + ext
+    name = name.rstrip(" .")
+    if os.path.splitext(name)[0].upper() in WINDOWS_RESERVED:
+        name = "_" + name                         # CON, NUL.zip, aux.pdf...
+    return name
 
 
 def filename_from_headers(headers):
@@ -323,13 +335,20 @@ def probe_media_title(url, headers):
     return title, ("." + ext if ext else "")
 
 
-def unique_path(path):
-    if not os.path.exists(path) and not os.path.exists(path + ".part"):
+def unique_path(path, reserved=()):
+    """A path no file, half-downloaded part or other task (reserved) uses."""
+    taken = {os.path.normcase(os.path.abspath(p)) for p in reserved if p}
+
+    def free(candidate):
+        return (not os.path.exists(candidate) and not os.path.exists(candidate + ".part")
+                and os.path.normcase(os.path.abspath(candidate)) not in taken)
+
+    if free(path):
         return path
     base, ext = os.path.splitext(path)
     for index in range(1, 1000):
         candidate = f"{base} ({index}){ext}"
-        if not os.path.exists(candidate) and not os.path.exists(candidate + ".part"):
+        if free(candidate):
             return candidate
     return path
 
@@ -435,6 +454,9 @@ class DownloadTask:
         self.retry_after = 0.0
         # media links the browser player really loaded (fallback when yt-dlp fails)
         self.streams = []
+        # file name (no extension) this media task writes; chosen once
+        self.output_stem = ""
+        self.legacy_naming = False
 
         # runtime only
         self.stop_event = None
@@ -469,6 +491,7 @@ class DownloadTask:
             "queue_order": self.queue_order,
             "retry_count": self.retry_count,
             "streams": self.streams,
+            "output_stem": self.output_stem,
         }
 
     @classmethod
@@ -499,6 +522,9 @@ class DownloadTask:
         task.queue_order = float(data.get("queue_order") or task.created_at)
         task.retry_count = int(data.get("retry_count") or 0)
         task.streams = [s for s in (data.get("streams") or []) if isinstance(s, dict)]
+        task.output_stem = str(data.get("output_stem") or "")
+        # saved by an older version: its parts use yt-dlp's "title [id]" names
+        task.legacy_naming = "output_stem" not in data and task.downloaded > 0
         if task.status in ("downloading", "queued", "pausing"):
             task.status = "paused"
         return task
@@ -1350,9 +1376,17 @@ class VibeDownloaderApp(ctk.CTk):
             self.settings["ui_revision"] = UI_REVISION
         save_dir = self.settings.get("default_save_dir") or DEFAULT_DOWNLOAD_DIR
         if not os.path.isdir(save_dir):
+            try:
+                os.makedirs(save_dir, exist_ok=True)      # e.g. a deleted folder
+            except OSError:
+                pass
+        if not os.path.isdir(save_dir):
+            # the drive (USB, NAS, D:) is not ready yet: use Downloads for now,
+            # but keep the user's choice saved for the next start
             save_dir = DEFAULT_DOWNLOAD_DIR
+        else:
+            self.settings["default_save_dir"] = save_dir
         self.default_save_dir = save_dir
-        self.settings["default_save_dir"] = save_dir
         self.max_concurrent = max(1, int(self.settings.get("max_concurrent") or 3))
         self.connections = max(1, int(self.settings.get("connections") or 8))
         self.server_port = int(self.settings.get("port") or 8765)
@@ -1879,6 +1913,8 @@ class VibeDownloaderApp(ctk.CTk):
         """Blocking - run in a thread. Finds the real title + format."""
         if task.kind == "media":
             title, ext = probe_media_title(task.url, task.headers)
+            if yt_helper.is_generic_title(title, task.url):
+                title = yt_helper.clean_page_title(given) or title
             title = sanitize_filename(title) or sanitize_filename(given) or "video"
             if ext.lstrip(".") in EXT_CATEGORY["music"]:
                 suffix = ext
@@ -1896,7 +1932,7 @@ class VibeDownloaderApp(ctk.CTk):
             task.name = name
         if task.kind != "media":
             task.save_path = unique_path(os.path.join(
-                task.save_dir or self.default_save_dir, task.name))
+                task.save_dir or self.default_save_dir, task.name), self._task_paths(task))
             task.name = os.path.basename(task.save_path)
         self._register_task(task)
 
@@ -1905,14 +1941,14 @@ class VibeDownloaderApp(ctk.CTk):
         folder = save_dir or self.default_save_dir
         filename = sanitize_filename(filename)
         if kind == "media":
-            name = filename or "media"
+            name = sanitize_filename(yt_helper.clean_page_title(filename)) or filename or "media"
             save_path = ""
         else:
             if not filename:
                 filename = "download.bin"
             elif "." not in filename:
                 filename += ".bin"
-            save_path = unique_path(os.path.join(folder, filename))
+            save_path = unique_path(os.path.join(folder, filename), self._task_paths())
             name = os.path.basename(save_path)
         return DownloadTask(url=url, name=name, save_dir=folder,
                             save_path=save_path, kind=kind, quality=quality,
@@ -1959,6 +1995,13 @@ class VibeDownloaderApp(ctk.CTk):
 
         filename = data.get("filename") or data.get("name") or ""
         quality = data.get("quality") or "best"
+        page = (data.get("referrer") or "").strip()
+        if (kind == "media" and yt_helper.is_stream_chunk_url(url)
+                and re.match(r"^https?://", page, re.I)
+                and not yt_helper.is_stream_chunk_url(page)):
+            # e.g. a YouTube "videoplayback" piece: it has no title and every one
+            # gets the same name, so the next video "finished" as the old file
+            url = page
 
         if data.get("verify") and kind == "file":
             # The browser hands over a download it already started. Only accept it
@@ -2297,7 +2340,7 @@ class VibeDownloaderApp(ctk.CTk):
                             task.status = "pausing"
                             task.queue_wait = True
                     self.post(lambda: self.show_status("Scheduler stopped the queue"))
-                elif scheduled is True:
+                elif scheduled is True and self._schedule_holding:
                     self._schedule_holding = False
                     for task in self.tasks.values():
                         if task.status == "paused" and task.queue_wait:
@@ -2309,7 +2352,7 @@ class VibeDownloaderApp(ctk.CTk):
                     if self._update_shutdown:
                         continue
                     active = sum(1 for task in self.tasks.values()
-                                 if task.status == "downloading")
+                                 if task.status in ("downloading", "pausing"))
                     free = max(1, self.max_concurrent) - active
                     now = time.time()
                     if free > 0:
@@ -2415,11 +2458,15 @@ class VibeDownloaderApp(ctk.CTk):
                     task.url, task.save_dir or self.default_save_dir,
                     quality=task.quality, headers=task.headers,
                     on_progress=on_progress, on_file=on_file,
-                    speed_limit=task.speed_limit)
+                    speed_limit=task.speed_limit,
+                    output_name=self._media_stem(task))
             else:
-                if not task.save_path:
+                if not task.save_path or task.save_path in self._task_paths(task):
+                    # two tasks must never write one file (same name added twice)
                     task.save_path = unique_path(os.path.join(
-                        task.save_dir, task.name))
+                        task.save_dir, os.path.basename(task.save_path) or task.name),
+                        self._task_paths(task))
+                    task.name = os.path.basename(task.save_path)
                 task.limiter = engine.RateLimiter(task.speed_limit)
                 runner = engine.MultiConnectionDownloader(
                     task.url, task.save_path, connections=self.connections,
@@ -2492,6 +2539,48 @@ class VibeDownloaderApp(ctk.CTk):
         self.save_history()
         self.post(self.update_stats)
 
+    def _task_paths(self, exclude=None):
+        """Files other unfinished tasks will write (no two tasks share one)."""
+        with self.lock:
+            return [t.save_path for t in self.tasks.values()
+                    if t is not exclude and not t.removed and t.save_path
+                    and t.status != "completed"]
+
+    def _media_stem(self, task, force=False):
+        """File name (no extension) for a media task, chosen once and kept so a
+        paused task resumes into the same file.
+
+        Pages yt-dlp understands (YouTube, Facebook...) return "": yt-dlp then
+        names the file "<real title> [<video id>]", always the right title and
+        unique per video. Raw stream links (m3u8, direct files) have no title,
+        so they get the page title, made unique in the folder. force=True is
+        for the player's own stream links when yt-dlp could not read the page."""
+        if task.output_stem:
+            return task.output_stem
+        if task.legacy_naming:
+            return ""
+        if not force and not yt_helper.is_raw_media_link(task.url):
+            return ""
+        name = task.name or ""
+        stem, ext = os.path.splitext(name)
+        if ext.lower().lstrip(".") in MEDIA_EXTS:
+            name = stem
+        name = sanitize_filename(name)
+        if not name or yt_helper.is_generic_title(name, task.url) or name.lower() == "media":
+            if not force:
+                return ""
+            name = "video"
+        folder = task.save_dir or self.default_save_dir
+        with self.lock:
+            others = [t.output_stem for t in self.tasks.values()
+                      if t is not task and not t.removed and t.output_stem
+                      and t.status != "completed"
+                      and os.path.normcase(t.save_dir or self.default_save_dir)
+                      == os.path.normcase(folder)]
+            # short enough that " (2)" is never cut off again
+            task.output_stem = yt_helper.unique_media_stem(folder, name[:140].rstrip(" ."), others)
+        return task.output_stem
+
     def _run_sniffed_streams(self, task, first_error, stop_event, pause_event,
                              on_progress, on_file, on_segments):
         """yt-dlp could not handle the page: try the media links the player loaded.
@@ -2501,7 +2590,7 @@ class VibeDownloaderApp(ctk.CTk):
         """
         status, error = engine.ERROR, first_error
         folder = task.save_dir or self.default_save_dir
-        stem = sanitize_filename(os.path.splitext(task.name)[0]) or "video"
+        stem = self._media_stem(task, force=True) or "video"
         for stream in task.streams:
             if stop_event.is_set() or pause_event.is_set():
                 break
@@ -2522,7 +2611,7 @@ class VibeDownloaderApp(ctk.CTk):
                     ext = ".mp3" if stream["kind"] == "audio" else ".mp4"
                 path = os.path.join(folder, stem + ext)
                 if os.path.isfile(path):
-                    path = unique_path(path)       # never overwrite a finished file
+                    path = unique_path(path, self._task_paths(task))  # never overwrite
                 task.save_path = path
                 task.limiter = engine.RateLimiter(task.speed_limit)
                 runner = engine.MultiConnectionDownloader(
@@ -3186,7 +3275,8 @@ class VibeDownloaderApp(ctk.CTk):
                     # keep the name as-is; do not force a .bin extension
                     pass
                 task.name = sanitize_filename(name)
-                task.save_path = unique_path(os.path.join(folder, task.name))
+                task.save_path = unique_path(os.path.join(folder, task.name),
+                                             self._task_paths(task))
 
             try:
                 dialog.destroy()
@@ -3882,8 +3972,19 @@ class VibeDownloaderApp(ctk.CTk):
         footer.pack(fill="x", padx=20, pady=(0, 14))
 
         def save_and_close():
+            old_default = self.default_save_dir
             self.default_save_dir = folder_var.get().strip() or DEFAULT_DOWNLOAD_DIR
             self.settings["default_save_dir"] = self.default_save_dir
+            if os.path.normcase(old_default) != os.path.normcase(self.default_save_dir):
+                # category folders that lived in the old default follow it
+                paths = self.settings.get("category_paths") or {}
+                old_norm = os.path.normcase(os.path.abspath(old_default))
+                for key, value in list(paths.items()):
+                    norm = os.path.normcase(os.path.abspath(value or ""))
+                    if norm == old_norm or norm.startswith(old_norm + os.sep):
+                        rel = os.path.relpath(os.path.abspath(value), os.path.abspath(old_default))
+                        paths[key] = os.path.normpath(os.path.join(
+                            self.default_save_dir, "" if rel == "." else rel))
             self.max_concurrent = max(1, int(concurrent_slider.get()))
             self.settings["max_concurrent"] = self.max_concurrent
             self.connections = max(1, int(connections_slider.get()))

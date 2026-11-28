@@ -397,6 +397,95 @@ def is_media_url(url):
         return False
 
 
+# Players such as YouTube load short-lived pieces of a video ("videoplayback"
+# links, often an ad or a preview). They have no title and every one of them
+# gets the same file name, so the page itself must be downloaded instead.
+STREAM_CHUNK_HOSTS = ("googlevideo.com",)
+GENERIC_TITLES = {"videoplayback", "video", "media", "index", "master", "playlist",
+                  "manifest", "stream", "download", "watch", "embed", "player"}
+PAGE_TITLE_SUFFIXES = (" - YouTube", " | Facebook", " / X", " • Instagram photos and videos",
+                       " - Dailymotion", " | TikTok")
+
+
+def is_stream_chunk_url(url):
+    """True for a player's internal stream piece (not something to save as-is)."""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url or "")
+        host = (parsed.netloc or "").lower()
+        if any(host == item or host.endswith("." + item) for item in STREAM_CHUNK_HOSTS):
+            return True
+        return parsed.path.rstrip("/").lower().endswith("/videoplayback")
+    except Exception:                            # noqa: BLE001
+        return False
+
+
+def is_raw_media_link(url):
+    """A link to the media itself (m3u8/mpd playlist, a file, a player piece),
+    not a page: it has no title of its own."""
+    try:
+        from urllib.parse import urlparse
+        path = (urlparse(url or "").path or "").lower()
+    except Exception:                            # noqa: BLE001
+        return False
+    ext = os.path.splitext(path)[1].lstrip(".")
+    return (is_stream_chunk_url(url) or ext in ("m3u8", "mpd") or ext in RAW_MEDIA_EXTS)
+
+
+RAW_MEDIA_EXTS = {"mp4", "m4v", "mkv", "webm", "mov", "avi", "flv", "ts", "mp3",
+                  "m4a", "aac", "ogg", "opus", "wav", "flac"}
+
+
+def is_generic_title(title, url=""):
+    """A title yt-dlp made up from the link ("videoplayback", "index"...)."""
+    text = (title or "").strip().lower()
+    if not text:
+        return True
+    stem = re.sub(r"\s*\[.*\]$", "", text).strip()
+    if stem in GENERIC_TITLES:
+        return True
+    try:
+        from urllib.parse import urlparse
+        last = os.path.splitext(os.path.basename(urlparse(url or "").path))[0].lower()
+    except Exception:                            # noqa: BLE001
+        last = ""
+    return bool(last) and stem == last
+
+
+def clean_page_title(title):
+    """Browser tab title without the site name: "Song - YouTube" -> "Song"."""
+    text = re.sub(r"^\(\d+\)\s*", "", (title or "").strip())   # "(3) Song - YouTube"
+    for suffix in PAGE_TITLE_SUFFIXES:
+        if text.endswith(suffix):
+            text = text[: -len(suffix)].strip()
+    return text
+
+
+def unique_media_stem(folder, stem, reserved=()):
+    """A file name (without extension) that nothing in folder uses yet - no
+    finished file, no half-downloaded part of another video and no other task
+    (reserved) - so a new video never "completes" as, or resumes into, another
+    video's file. A paused task keeps the stem it got the first time."""
+    try:
+        names = {name.lower() for name in os.listdir(folder)}
+    except OSError:
+        names = set()
+    reserved = {str(item).lower() for item in reserved if item}
+
+    def taken(candidate):
+        low = candidate.lower()
+        prefix = low + "."
+        return low in reserved or any(name.startswith(prefix) for name in names)
+
+    if not taken(stem):
+        return stem
+    for index in range(2, 1000):
+        candidate = f"{stem} ({index})"
+        if not taken(candidate):
+            return candidate
+    return f"{stem} ({int(time.time())})"
+
+
 def format_selector(quality, has_ffmpeg):
     height = HEIGHTS.get(quality or "")
     if quality == "audio":
@@ -485,7 +574,7 @@ class YtDlpRunner:
     def _build_command(self, exe, ffmpeg):
         if self.output_name:
             # a raw .m3u8/.mpd has no real title ("index", "master"): use ours
-            safe = self.output_name.replace("%", "%%")[:150]
+            safe = self.output_name.replace("%", "%%")
             output = os.path.join(self.save_dir, safe + ".%(ext)s")
         else:
             output = os.path.join(self.save_dir,
@@ -495,6 +584,7 @@ class YtDlpRunner:
             "--newline",
             "--encoding", "utf-8",          # keep non-English titles intact on Windows
             "--no-playlist",
+            "--playlist-items", "1",
             "--no-simulate",
             "--progress",
             "--progress-template",
@@ -674,15 +764,9 @@ class YtDlpRunner:
 
         if proc.returncode == 0:
             if not result_file:
-                # Fall back: newest file in save_dir
-                try:
-                    candidates = [os.path.join(self.save_dir, n)
-                                  for n in os.listdir(self.save_dir)]
-                    candidates = [p for p in candidates if os.path.isfile(p)]
-                    if candidates:
-                        result_file = max(candidates, key=os.path.getmtime)
-                except OSError:
-                    pass
+                # Fall back: this task's newest finished file (never another
+                # task's part or an older video)
+                result_file = self._find_newest_file(started)
             if result_file and os.path.isfile(result_file) and self.on_file:
                 try:
                     self.on_file(result_file)
@@ -715,9 +799,12 @@ class YtDlpRunner:
         newest = None
         newest_time = since - 5
         try:
+            own = (self.output_name.lower() + ".") if self.output_name else ""
             for name in os.listdir(self.save_dir):
                 path = os.path.join(self.save_dir, name)
                 if not os.path.isfile(path) or name.endswith((".part", ".ytdl")):
+                    continue
+                if own and not name.lower().startswith(own):
                     continue
                 modified = os.path.getmtime(path)
                 if modified >= newest_time:

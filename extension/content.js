@@ -198,11 +198,15 @@
       return r.width >= MIN_W && r.height >= MIN_H;
     }
 
+    function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ""; } }
+
     function download(video) {
       let url = video.currentSrc || video.src || "";
       let direct = true;
-      // blob:/MSE/HLS streams can't be fetched directly -> let the app resolve the page URL
-      if (!/^https?:\/\//i.test(url) || /\.(m3u8|mpd)(\?|$)/i.test(url)) {
+      // blob:/HLS, and players' internal pieces (YouTube "videoplayback"): the
+      // app downloads the page itself so every video keeps its own title
+      if (!/^https?:\/\//i.test(url) || /\.(m3u8|mpd)(\?|$)/i.test(url) ||
+          /(^|\.)googlevideo\.com$/i.test(hostOf(url)) || /\/videoplayback(\?|$)/i.test(url)) {
         url = location.href;
         direct = false;            // never "fall back" to downloading the web page itself
       }

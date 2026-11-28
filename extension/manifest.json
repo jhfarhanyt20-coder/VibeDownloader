@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BD Downloader",
-  "version": "2.7.0",
+  "version": "2.7.5",
   "description": "BD Downloader - catches your downloads and sends them to the BD Downloader app.",
   "permissions": [
     "downloads",

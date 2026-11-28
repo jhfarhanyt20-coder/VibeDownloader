@@ -1,5 +1,28 @@
 # CHANGELOG — BD Downloader (formerly VibeDownloader)
 
+## 2.7.5 (2026-11-28)
+- Fixed: downloading several videos one after another could show "Complete"
+  while the folder only had the first video. The browser button sometimes sent
+  the player's internal stream piece ("videoplayback"), which has no title, so
+  every video got the same file name and the next one "finished" as the old file.
+  Now the video page itself is downloaded.
+- Every video is saved under its own online title in the folder you chose, and a
+  new download never reuses an older file with the same name (it becomes
+  "Title (2)").
+- Tab titles lose the site name ("Song - YouTube" is saved as "Song").
+- YouTube, Facebook and other supported pages are saved as "Title [video id]",
+  always the video's real title and never confused with another video.
+- Two downloads with the same file name (for example two "file.pdf" from one page)
+  no longer write into the same file; the second becomes "file (1).pdf".
+- A default folder on a USB drive, NAS or D: that is not ready when Windows starts
+  is no longer replaced by Downloads for good.
+- Changing the default folder in Settings now also moves the remembered
+  Video/Music/... folders that were inside it.
+- A "Download Later" task stays paused while the scheduler window is open.
+- A channel or home-feed preview downloads one video, not the whole channel.
+- Very long file names keep their extension; Windows-reserved names (CON, NUL...)
+  are made safe.
+
 ## 2.7.4 (2026-11-27)
 - Updates now come from the renamed repository, github.com/jhfarhanyt20-coder/BD-Downloader.
 
